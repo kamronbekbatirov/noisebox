@@ -1,8 +1,6 @@
 <div align="center">
-  <img src="docs/brand/noisebox-mark-paper-anim.svg#gh-dark-mode-only" width="160" alt="NoiseBox" />
-  <img src="docs/brand/noisebox-mark-ink-anim.svg#gh-light-mode-only"  width="160" alt="NoiseBox" />
-
-  <h1>NoiseBox</h1>
+  <img src="docs/brand/noisebox-horizontal-paper-anim.svg#gh-dark-mode-only" width="520" alt="noisebox" />
+  <img src="docs/brand/noisebox-horizontal-ink-anim.svg#gh-light-mode-only"  width="520" alt="noisebox" />
 
   <p>
     End-to-end encrypted messenger between two
