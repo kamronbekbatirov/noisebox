@@ -12,15 +12,18 @@
 #include "freertos/task.h"
 
 #define BG          COL_BLACK
-#define TITLE_BG    COL_DARKBLUE
-#define TITLE_FG    COL_NOISEBOX
-#define BODY_FG     COL_WHITE
-#define HINT_FG     COL_GRAY
-#define STATUS_FG   COL_GRAY
+#define TITLE_BG    COL_BLACK
+#define TITLE_FG    COL_PAPER
+#define BODY_FG     COL_PAPER
+#define HINT_FG     COL_DIM
+#define STATUS_FG   COL_DIM
 
 void ui_title(const char *text) {
     display_fill_rect(0, UI_TITLE_Y, LCD_W, UI_TITLE_H, TITLE_BG);
     display_center_str(UI_TITLE_Y + 2, text, TITLE_FG, TITLE_BG);
+    // Hairline divider under the title — gives a terminal-statusbar feel
+    // without the heavy filled bar of the old design.
+    display_fill_rect(0, UI_TITLE_Y + UI_TITLE_H - 1, LCD_W, 1, COL_PAPER);
 }
 
 void ui_hint(const char *text) {
@@ -88,12 +91,73 @@ void ui_spinner_tick(void) {
     ui_clear_body();
     int y = UI_BODY_Y + (UI_BODY_H - 16) / 2;
     int x = (LCD_W - 8) / 2;
-    display_draw_str(x, y, frames[s_spin_phase & 3], COL_NOISEBOX, BG);
+    display_draw_str(x, y, frames[s_spin_phase & 3], COL_PAPER, BG);
     s_spin_phase++;
 }
 
 void ui_spinner_end(void) {
     ui_clear_body();
+}
+
+// --- ui_splash + ui_draw_logo ---
+//
+// The NoiseBox mark is a 10x10 pixel-art grid. We store it as 10 uint16_t
+// rows where bit `c` of row `r` is set iff that cell is "ink". This is the
+// exact same shape as docs/brand/noisebox-mark-paper.svg /-mark-ink.svg.
+
+static const uint16_t LOGO_ROWS[10] = {
+    0x007F, // row 0: ####### . . .
+    0x007F, // row 1: ####### . . .
+    0x003F, // row 2: ###### . . . .
+    0x007F, // row 3: ####### . . .
+    0x013F, // row 4: ###### . . # .
+    0x00FF, // row 5: ######## . .
+    0x00BF, // row 6: ###### . # . .
+    0x01FF, // row 7: ######### .
+    0x005F, // row 8: ##### . # . . .
+    0x00FF, // row 9: ######## . .
+};
+
+void ui_draw_logo(int x0, int y0, int cell, color_t fg) {
+    for (int r = 0; r < 10; r++) {
+        uint16_t row = LOGO_ROWS[r];
+        for (int c = 0; c < 10; c++) {
+            if (row & (1u << c)) {
+                display_fill_rect(x0 + c * cell, y0 + r * cell,
+                                  cell, cell, fg);
+            }
+        }
+    }
+}
+
+void ui_splash(void) {
+    display_clear(COL_BLACK);
+
+    // Logo: 10 cells of 7 px = 70 px tall block, centred horizontally,
+    // sitting in the upper third of the 240x135 screen so the wordmark
+    // can breathe beneath it.
+    const int cell = 7;
+    const int logo_w = 10 * cell;
+    int lx = (LCD_W - logo_w) / 2;
+    int ly = 6;
+    ui_draw_logo(lx, ly, cell, COL_PAPER);
+
+    // Wordmark — kept in JetBrains-Mono-feel uppercase to match the brand.
+    int ty = ly + logo_w + 6;
+    display_center_str(ty, "NOISEBOX", COL_PAPER, COL_BLACK);
+
+    // Subtle hint at the bottom — dim so it doesn't compete with the mark.
+    display_center_str(LCD_H - 16, "press enter", COL_DIM, COL_BLACK);
+
+    while (1) {
+        key_event_t e;
+        if (kbd_poll(&e)) {
+            if (e.kind == KEY_EV_ENTER || e.kind == KEY_EV_SPACE
+                    || e.kind == KEY_EV_ESC) return;
+            if (e.kind == KEY_EV_CHAR && (e.ch == '`' || e.ch == ' ')) return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
 }
 
 // --- ui_menu ---
@@ -119,8 +183,10 @@ int ui_menu(const char *title, const char *const *items, int n,
             int idx = top + i;
             int y = UI_BODY_Y + i * 18;
             bool cur = (idx == sel);
-            color_t fg = cur ? COL_BLACK : COL_WHITE;
-            color_t bg = cur ? COL_NOISEBOX : BG;
+            // Selected row: invert (paper fill, ink text). Unselected: paper
+            // text on black — keeps the mono "terminal" look.
+            color_t fg = cur ? COL_BLACK : COL_PAPER;
+            color_t bg = cur ? COL_PAPER : BG;
             if (cur) display_fill_rect(0, y, LCD_W, 17, bg);
             display_draw_str(8, y + 1, items[idx], fg, bg);
         }
@@ -168,20 +234,20 @@ int ui_text_input(const char *title, char *buf, size_t cap, bool masked,
             int shown = len < (int)sizeof(m) - 1 ? len : (int)sizeof(m) - 1;
             for (int i = 0; i < shown; i++) m[i] = '*';
             m[shown] = 0;
-            display_draw_str(24, y, m, COL_WHITE, BG);
+            display_draw_str(24, y, m, COL_PAPER, BG);
         } else {
             // Scroll horizontally if too long.
             int max_chars = (LCD_W - 24 - 8) / 8;
             int start = 0;
             if (len > max_chars - 1) start = len - max_chars + 1;
-            display_draw_str(24, y, buf + start, COL_WHITE, BG);
+            display_draw_str(24, y, buf + start, COL_PAPER, BG);
         }
         // Caret.
         int caret_chars = (len > (LCD_W - 24 - 8) / 8 - 1)
                           ? (LCD_W - 24 - 8) / 8 - 1
                           : len;
         int cx = 24 + caret_chars * 8;
-        display_fill_rect(cx, y + 14, 7, 2, COL_WHITE);
+        display_fill_rect(cx, y + 14, 7, 2, COL_PAPER);
 
         key_event_t e;
         if (!kbd_poll(&e)) {

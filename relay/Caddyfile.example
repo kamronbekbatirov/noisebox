@@ -1,0 +1,17 @@
+# NoiseBox relay Caddy config (for Docker Compose deploy).
+#
+# Caddy reads $DOMAIN from the .env file via docker-compose, so the user
+# never has to edit this file — they just set DOMAIN in .env.
+#
+# Long-poll endpoint can hold the connection up to ~60s; bump
+# read_timeout so Caddy doesn't kill it mid-request.
+
+{$DOMAIN} {
+    @long_poll path_regexp ^/v1/[^/]+/poll$
+    reverse_proxy @long_poll relay:8081 {
+        transport http {
+            read_timeout 65s
+        }
+    }
+    reverse_proxy relay:8081
+}

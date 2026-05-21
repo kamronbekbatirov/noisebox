@@ -31,7 +31,14 @@ static inline color_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
 #define COL_MAGENTA 0xF81F
 #define COL_GRAY    0x7BEF
 #define COL_DARKBLUE  0x0010
-#define COL_NOISEBOX  0x07FF   // bright cyan, our brand
+
+// Brand: pixel-art "noisebox" mark — paper (#efece6) on ink (#0b0b0d).
+// On the device we use COL_BLACK as ink (pure 0 cheaper than #0b0b0d) and
+// COL_PAPER as the highlight / default text color.
+#define COL_PAPER     0xEF7C   // RGB565 of #efece6 (warm off-white)
+#define COL_INK       0x0841   // RGB565 of #0b0b0d (near-black)
+#define COL_DIM       0x528A   // dimmer paper for hints
+#define COL_NOISEBOX  COL_PAPER  // kept for backward-compat; now == paper
 
 // Bring up the display: SPI bus, panel reset, backlight on.
 // Returns 0 on success.

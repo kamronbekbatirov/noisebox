@@ -66,6 +66,14 @@ int  ui_menu(const char *title, const char *const *items, int n,
 int  ui_text_input(const char *title, char *buf, size_t cap,
                    bool masked, const char *hint);
 
+// Boot splash: pixel-art NoiseBox mark + wordmark on a clean black canvas,
+// waits for ENTER (or backtick) before returning. Use once on cold boot.
+void ui_splash(void);
+
+// Draw the noisebox mark at (x0, y0) using cells of `cell` px each.
+// Total footprint is 10*cell px wide and 10*cell px tall.
+void ui_draw_logo(int x0, int y0, int cell, color_t fg);
+
 #ifdef __cplusplus
 }
 #endif

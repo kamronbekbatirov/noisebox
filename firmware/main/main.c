@@ -144,8 +144,8 @@ static void bind_render(const char *code) {
     char line1[40], line2[16];
     snprintf(line1, sizeof line1, "Code: %s", code);
     display_center_str(UI_BODY_Y + 8,  line1, COL_NOISEBOX, COL_BLACK);
-    display_center_str(UI_BODY_Y + 30, "Open DM with the bot",     COL_WHITE, COL_BLACK);
-    display_center_str(UI_BODY_Y + 48, "and type:",                COL_WHITE, COL_BLACK);
+    display_center_str(UI_BODY_Y + 30, "Open DM with the bot",     COL_PAPER, COL_BLACK);
+    display_center_str(UI_BODY_Y + 48, "and type:",                COL_PAPER, COL_BLACK);
     snprintf(line2, sizeof line2, "/pair %s", code);
     display_center_str(UI_BODY_Y + 66, line2, COL_NOISEBOX, COL_BLACK);
     ui_hint("waiting...");
@@ -191,6 +191,51 @@ static int screen_bind(void) {
 static void screen_settings(void);
 static void screen_help(void);
 
+// First-boot config: ask the user for their bot token and relay host,
+// persist both to NVS. Returning means both values are saved AND non-empty.
+// Caller is responsible for handing them to tx_init() afterwards.
+static int screen_relay_setup(char *tok, size_t tok_cap,
+                              char *host, size_t host_cap) {
+    ui_show_message(
+        "Relay setup",
+        "First boot.\n"
+        "I need your Telegram\n"
+        "bot token + relay host\n"
+        "to talk to the network.",
+        "press enter to begin");
+
+    while (1) {
+        tok[0] = 0;
+        if (ui_text_input("Bot token", tok, tok_cap,
+                          /*masked=*/false,
+                          "from @BotFather; enter=ok") != 0) continue;
+        // Trivial sanity: Telegram tokens look like "123456:abc...". Accept
+        // anything with a colon and length >= 20; user can fix typos later
+        // via Settings -> Re-setup relay.
+        if (!strchr(tok, ':') || strlen(tok) < 20) {
+            ui_show_message("Bot token",
+                            "doesn't look like a\nTelegram bot token.",
+                            "enter to retry");
+            continue;
+        }
+
+        host[0] = 0;
+        if (ui_text_input("Relay host", host, host_cap,
+                          /*masked=*/false,
+                          "your VPS domain; enter=ok") != 0) continue;
+        if (strlen(host) < 4 || strchr(host, ' ')) {
+            ui_show_message("Relay host",
+                            "domain looks invalid.",
+                            "enter to retry");
+            continue;
+        }
+
+        storage_save_relay_token(tok);
+        storage_save_relay_host(host);
+        return 0;
+    }
+}
+
 static const tx_peer_t *screen_peer_list(tx_peer_t *peers, int *out_n) {
     while (1) {
         ui_spinner_begin("Peers", "fetching list...");
@@ -198,7 +243,15 @@ static const tx_peer_t *screen_peer_list(tx_peer_t *peers, int *out_n) {
         int n = tx_get_peers(peers, TX_MAX_PEERS);
         ui_spinner_end();
         if (n < 0) {
-            ui_show_message("Peers", "request failed", "enter to retry");
+            // Most common cause: relay returned 401 because device_token
+            // was wiped server-side, or bot token / relay host are wrong.
+            // Give the user an escape into Settings instead of looping.
+            const char *items[] = {"Retry", "Settings", "Reboot"};
+            int idx = ui_menu("Connection failed",
+                              items, 3,
+                              ";=up .=down enter=ok");
+            if (idx == 1) screen_settings();
+            else if (idx == 2) esp_restart();
             continue;
         }
         // Top of the menu: Help + Settings. Then peers.
@@ -228,8 +281,8 @@ static void screen_help(void) {
     display_clear(COL_BLACK);
     ui_title("Keys");
     int y = UI_BODY_Y;
-    display_draw_str(8,  y,      ";  up         .  down",  COL_WHITE,  COL_BLACK);
-    display_draw_str(8,  y + 16, ",  left       /  right", COL_WHITE,  COL_BLACK);
+    display_draw_str(8,  y,      ";  up         .  down",  COL_PAPER,  COL_BLACK);
+    display_draw_str(8,  y + 16, ",  left       /  right", COL_PAPER,  COL_BLACK);
     display_draw_str(8,  y + 32, "enter = send / open",    COL_GREEN,  COL_BLACK);
     display_draw_str(8,  y + 48, "`  back / cancel",       COL_NOISEBOX,COL_BLACK);
     display_draw_str(8,  y + 64, "Aa = caps / @!#",        COL_GRAY,   COL_BLACK);
@@ -247,21 +300,34 @@ static void screen_help(void) {
 static void screen_settings(void) {
     while (1) {
         const char *items[] = {
+            "Re-setup relay",
             "Forget Wi-Fi",
             "Unbind device",
             "Wipe everything",
             "Back",
         };
-        int idx = ui_menu("Settings", items, 4,
+        int idx = ui_menu("Settings", items, 5,
                           "; up  . down  enter=ok  ` =back");
-        if (idx < 0 || idx == 3) return;
+        if (idx < 0 || idx == 4) return;
         if (idx == 0) {
+            // Wipe the saved relay token + host AND the device binding (the
+            // device_token was issued by THAT relay, useless on a new one).
+            // Wi-Fi is preserved on purpose.
+            storage_save_relay_token("");
+            storage_save_relay_host("");
+            storage_forget_binding();
+            ui_show_message("Relay re-setup",
+                            "relay config cleared.\nrebooting to setup...",
+                            "enter to reboot");
+            esp_restart();
+        }
+        if (idx == 1) {
             wifi_clear_saved();
             ui_show_message("Wi-Fi", "saved network forgotten.\nrebooting...",
                             "enter to reboot");
             esp_restart();
         }
-        if (idx == 1) {
+        if (idx == 2) {
             // Unbind is single-confirm: only loses the bot pairing, not chats.
             storage_forget_binding();
             ui_show_message("Unbind",
@@ -269,7 +335,7 @@ static void screen_settings(void) {
                             "enter to reboot");
             esp_restart();
         }
-        if (idx == 2) {
+        if (idx == 3) {
             // Factory reset is destructive AND silent on the peer side
             // (peers see your identity disappear and a new one show up).
             // Require typed confirmation so a fat finger can't trigger it.
@@ -408,10 +474,10 @@ static void chat_render_input(int input_y, const char *typed, int typed_len) {
     display_draw_str(2, input_y, "> ", COL_NOISEBOX, COL_BLACK);
     int max_chars = (LCD_W - 18) / 8;
     int start_x = typed_len > max_chars - 1 ? typed_len - max_chars + 1 : 0;
-    display_draw_str(18, input_y, typed + start_x, COL_WHITE, COL_BLACK);
+    display_draw_str(18, input_y, typed + start_x, COL_PAPER, COL_BLACK);
     int caret_chars = typed_len - start_x;
     int cx = 18 + caret_chars * 8;
-    if (cx < LCD_W) display_fill_rect(cx, input_y + 14, 7, 2, COL_WHITE);
+    if (cx < LCD_W) display_fill_rect(cx, input_y + 14, 7, 2, COL_PAPER);
 }
 
 static void chat_render_history(void) {
@@ -421,7 +487,7 @@ static void chat_render_history(void) {
     if (start < 0) start = 0;
     for (int i = start; i < s_chat_top; i++) {
         const char *l = s_chat_lines[i % CHAT_LINES];
-        color_t fg = (l[0] == '>') ? COL_GREEN : COL_WHITE;
+        color_t fg = (l[0] == '>') ? COL_GREEN : COL_PAPER;
         display_draw_str(2, y, l, fg, COL_BLACK);
         y += 16;
     }
@@ -612,6 +678,9 @@ void app_main(void) {
         ui_show_message("Keyboard", "init failed - reboot", "press enter");
     }
 
+    // Boot splash: brand mark + wordmark. User dismisses with enter.
+    ui_splash();
+
     load_user_chat_id(&g_user_chat_id);
     ESP_LOGI(TAG, "user_chat_id loaded: %lld", (long long)g_user_chat_id);
 
@@ -620,7 +689,33 @@ void app_main(void) {
         while (1) vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    tx_init(NOISE_RELAY_HOST, NOISE_BOT_TOKEN);
+    // Resolve relay configuration. Priority:
+    //   1. NVS (set by a previous run of screen_relay_setup), OR
+    //   2. compile-time NOISE_BOT_TOKEN / NOISE_RELAY_HOST defaults from
+    //      config.h, if those look like real values (not placeholders), OR
+    //   3. show the first-boot setup screen.
+    static char s_relay_tok[128];
+    static char s_relay_host[96];
+    if (storage_load_relay_token(s_relay_tok, sizeof s_relay_tok) != 0
+            || s_relay_tok[0] == 0) {
+        strncpy(s_relay_tok, NOISE_BOT_TOKEN, sizeof s_relay_tok - 1);
+    }
+    if (storage_load_relay_host(s_relay_host, sizeof s_relay_host) != 0
+            || s_relay_host[0] == 0) {
+        strncpy(s_relay_host, NOISE_RELAY_HOST, sizeof s_relay_host - 1);
+    }
+    bool tok_placeholder  = (s_relay_tok[0] == 0)
+                          || (strstr(s_relay_tok, "XXXX") != NULL)
+                          || (strncmp(s_relay_tok, "0000000000:", 11) == 0);
+    bool host_placeholder = (s_relay_host[0] == 0)
+                          || (strstr(s_relay_host, "example.com") != NULL);
+    if (tok_placeholder || host_placeholder) {
+        screen_relay_setup(s_relay_tok, sizeof s_relay_tok,
+                           s_relay_host, sizeof s_relay_host);
+    }
+    ESP_LOGI(TAG, "relay host=%s token_len=%d",
+             s_relay_host, (int)strlen(s_relay_tok));
+    tx_init(s_relay_host, s_relay_tok);
 
     // Load the per-device bearer token issued by the relay at /pair time.
     // Until this is set, only /bind_poll (authenticated by the shared

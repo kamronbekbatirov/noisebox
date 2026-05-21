@@ -22,26 +22,51 @@ full picture and threat model.
 - Persists state to `state.json` via `flush+fsync+os.replace` so it
   survives restarts and VPS crashes.
 
-## Quick deploy
+## Quick deploy (Docker, recommended)
 
-The full step-by-step (Caddy, systemd, Let's Encrypt) is in the
-top-level [`README.md`](../README.md). The TL;DR:
+Any small VPS with Docker installed will do (1 vCPU / 512 MB RAM is
+plenty). DNS A record must already point at the server.
+
+```bash
+git clone https://github.com/kamronbekbatirov/noisebox /opt/noisebox
+cd /opt/noisebox/relay
+
+cp .env.example .env
+nano .env       # BOT_TOKEN=... and DOMAIN=relay.yours.example
+
+cp Caddyfile.example Caddyfile
+docker compose up -d
+docker compose logs -f relay
+```
+
+Caddy is bundled in the same compose stack; it pulls a Let's Encrypt
+cert on first run. To smoke-test:
+
+```bash
+TOKEN=$(grep ^BOT_TOKEN= .env | cut -d= -f2)
+curl -sS https://$(grep ^DOMAIN= .env | cut -d= -f2)/v1/$TOKEN/health
+```
+
+## Bare-VPS deploy (without Docker)
+
+If you prefer to run Python directly on the host:
 
 ```bash
 adduser --system --group --home /opt/cardputer-relay cardputer
-cd /opt/cardputer-relay && git clone https://github.com/<you>/noisebox .
+cd /opt/cardputer-relay && git clone https://github.com/kamronbekbatirov/noisebox .
 chown -R cardputer:cardputer /opt/cardputer-relay
 sudo -u cardputer python3 -m venv venv
 sudo -u cardputer ./venv/bin/pip install -r relay/requirements.txt
-cp relay/.env.example .env && nano .env   # paste BOT_TOKEN
+cp relay/.env.example .env && nano .env   # paste BOT_TOKEN (DOMAIN unused here)
 chmod 600 .env && chown cardputer:cardputer .env
 cp relay/cardputer-relay.service /etc/systemd/system/
 systemctl daemon-reload && systemctl enable --now cardputer-relay
 journalctl -u cardputer-relay -f
 ```
 
-Put Caddy in front for TLS termination (see the top-level README for
-the Caddyfile snippet).
+You'll need your own Caddy (or nginx) in front for TLS. The
+`Caddyfile.example` here uses Docker-internal hostnames (`relay:8081`);
+on bare-metal point reverse_proxy at `localhost:8081` instead.
 
 ## Local development
 

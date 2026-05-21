@@ -1,0 +1,85 @@
+name: Firmware build
+
+# Builds the M5Cardputer-Adv firmware. On every push to main we publish
+# the binary as a workflow artifact (so the web-serial flasher on
+# GitHub Pages can fetch the latest). On every git tag matching v* we
+# additionally attach the binaries to a GitHub Release.
+#
+# Single binary works for everyone: NOISE_BOT_TOKEN / NOISE_RELAY_HOST
+# stay as placeholders in config.h, so on first boot the firmware shows
+# the "Relay setup" screen and the user types their own values.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write          # needed for softprops/action-gh-release
+
+jobs:
+  build:
+    name: ESP-IDF build (esp32s3)
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.4.2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stub config.h (CI build is generic)
+        # The placeholders here ("0000000000:XXX...", "example.com") are
+        # detected at boot and trigger the Relay setup screen — so the
+        # same binary works for everyone.
+        run: cp firmware/main/config.h.example firmware/main/config.h
+
+      - name: Build firmware
+        shell: bash
+        working-directory: firmware
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Stage binaries
+        run: |
+          mkdir -p dist
+          cp firmware/build/cardputer_messenger.bin              dist/
+          cp firmware/build/bootloader/bootloader.bin            dist/
+          cp firmware/build/partition_table/partition-table.bin  dist/
+          cp firmware/build/flasher_args.json                    dist/
+          # A compact manifest for the web flasher: lists the three
+          # files and their flash offsets.
+          cat > dist/manifest.json <<EOF
+          {
+            "name": "NoiseBox firmware",
+            "chip": "esp32s3",
+            "build": "${GITHUB_SHA::7}",
+            "ref":   "${GITHUB_REF_NAME}",
+            "files": [
+              { "path": "bootloader.bin",       "offset": "0x0"     },
+              { "path": "partition-table.bin",  "offset": "0x8000"  },
+              { "path": "cardputer_messenger.bin", "offset": "0x10000" }
+            ]
+          }
+          EOF
+          ls -la dist/
+
+      - name: Upload artifact (latest build)
+        uses: actions/upload-artifact@v4
+        with:
+          name: noisebox-firmware
+          path: dist/
+          retention-days: 90
+
+      - name: Publish to Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/cardputer_messenger.bin
+            dist/bootloader.bin
+            dist/partition-table.bin
+            dist/manifest.json
+          generate_release_notes: true

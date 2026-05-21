@@ -1,0 +1,46 @@
+# NoiseBox relay — one-command deploy.
+#
+# Usage:
+#   1. Copy .env.example to .env, fill in BOT_TOKEN and DOMAIN.
+#   2. Point an A record for $DOMAIN at this server's public IP.
+#   3. docker compose up -d
+#
+# Caddy will pull a Let's Encrypt certificate automatically on first run.
+
+services:
+  relay:
+    build: .
+    image: noisebox-relay:latest
+    container_name: noisebox-relay
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - relay-state:/data
+    networks:
+      - noisebox
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: noisebox-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    env_file: .env
+    depends_on:
+      - relay
+    networks:
+      - noisebox
+
+volumes:
+  relay-state:
+  caddy-data:
+  caddy-config:
+
+networks:
+  noisebox:
+    driver: bridge

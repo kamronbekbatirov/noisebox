@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flash your NoiseBox</title>
+<link rel="icon" href="../brand/noisebox-mark-paper.svg">
+<style>
+  :root {
+    --paper: #efece6;
+    --ink:   #0b0b0d;
+    --dim:   #5f5e5b;
+    --line:  #2a2a2c;
+    --accent: #efece6;
+    --error: #e0625a;
+    --ok:     #6acc6a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--ink); color: var(--paper);
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 14px; line-height: 1.5;
+    min-height: 100vh;
+  }
+  main {
+    max-width: 640px; margin: 0 auto; padding: 48px 24px 96px;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 20px; margin-bottom: 28px;
+  }
+  header img { width: 64px; height: 64px; image-rendering: pixelated; }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: 0.02em; }
+  header p { margin: 4px 0 0; color: var(--dim); font-size: 13px; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); margin: 32px 0 12px; }
+  p { margin: 8px 0; }
+  ol, ul { padding-left: 22px; }
+  li { margin: 6px 0; }
+  button {
+    background: var(--paper); color: var(--ink);
+    border: none; padding: 10px 18px;
+    font: inherit; font-weight: 600;
+    cursor: pointer; border-radius: 2px;
+    transition: opacity 0.15s;
+  }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.3; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--paper); border: 1px solid var(--paper); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 16px 0; }
+  #log {
+    background: #060607; border: 1px solid var(--line);
+    padding: 12px 14px; min-height: 140px; max-height: 280px; overflow-y: auto;
+    font-size: 12px; white-space: pre-wrap; word-break: break-all;
+    margin-top: 12px; border-radius: 2px;
+  }
+  #log .err { color: var(--error); }
+  #log .ok  { color: var(--ok); }
+  #log .dim { color: var(--dim); }
+  .progress {
+    height: 4px; background: var(--line); border-radius: 2px;
+    overflow: hidden; margin-top: 12px;
+  }
+  .progress > div { height: 100%; background: var(--paper); width: 0%; transition: width 0.2s; }
+  .warn-banner {
+    background: #1a1310; border-left: 3px solid var(--error);
+    padding: 10px 14px; margin: 16px 0; font-size: 13px;
+    color: #ffc8c0;
+  }
+  code { background: #18181b; padding: 1px 6px; border-radius: 2px; font-size: 12px; }
+  a { color: var(--paper); }
+  footer { color: var(--dim); font-size: 12px; margin-top: 48px; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <img src="../brand/noisebox-mark-paper.svg" alt="NoiseBox logo">
+  <div>
+    <h1>Flash your NoiseBox</h1>
+    <p>Web Serial firmware installer for M5Cardputer-Adv</p>
+  </div>
+</header>
+
+<div id="unsupported" class="warn-banner" hidden>
+  Your browser doesn't support Web Serial. Use desktop
+  <strong>Chrome, Edge, or Opera</strong>. Safari and Firefox don't work.
+</div>
+
+<h2>1. Plug in</h2>
+<p>Connect your Cardputer-Adv to this computer with a USB-C cable. It
+should appear as a serial device.</p>
+
+<h2>2. Connect &amp; flash</h2>
+<div class="row">
+  <button id="btnConnect">Connect</button>
+  <button id="btnFlash" disabled>Flash latest</button>
+  <button id="btnDisconnect" class="ghost" disabled>Disconnect</button>
+</div>
+<div class="progress"><div id="bar"></div></div>
+<div id="log"></div>
+
+<h2>3. After flashing</h2>
+<ol>
+  <li>The device boots into a splash screen — press <strong>enter</strong>.</li>
+  <li>Pick your Wi-Fi network and enter the password.</li>
+  <li><strong>Relay setup</strong>: type your bot token (from
+    <a href="https://t.me/BotFather">@BotFather</a>) and your relay
+    domain. Both are saved on the device — you won't be asked again.</li>
+  <li>The device shows a 6-digit code. In Telegram DM your bot:
+    <code>/pair NNNNNN</code>.</li>
+</ol>
+
+<p>Full setup walkthrough:
+<a href="https://github.com/kamronbekbatirov/noisebox#quick-start">README → Quick start</a>.</p>
+
+<footer>
+  Open source under AGPL-3.0 ·
+  <a href="https://github.com/kamronbekbatirov/noisebox">source</a> ·
+  built on <a href="https://github.com/espressif/esptool-js">esptool-js</a>
+</footer>
+
+</main>
+
+<script type="module">
+import { ESPLoader, Transport } from "https://unpkg.com/esptool-js@0.5.2/bundle.js";
+
+const RELEASES_TAG = "latest";   // "latest" follows the most-recent release tag
+const OWNER = "kamronbekbatirov";
+const REPO  = "noisebox";
+
+const $ = id => document.getElementById(id);
+const logEl = $("log"), bar = $("bar");
+const btnConnect = $("btnConnect"), btnFlash = $("btnFlash"), btnDisconnect = $("btnDisconnect");
+
+if (!("serial" in navigator)) {
+  $("unsupported").hidden = false;
+  btnConnect.disabled = true;
+}
+
+let port = null, transport = null, esploader = null;
+
+function log(msg, cls) {
+  const el = document.createElement("div");
+  if (cls) el.className = cls;
+  el.textContent = msg;
+  logEl.appendChild(el);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setBar(p) { bar.style.width = `${Math.max(0, Math.min(100, p))}%`; }
+
+const espLoaderTerminal = {
+  clean()             { /* keep history */ },
+  writeLine(data)     { log(data, "dim"); },
+  write(data)         { /* line-by-line is enough */ },
+};
+
+btnConnect.addEventListener("click", async () => {
+  try {
+    btnConnect.disabled = true;
+    port = await navigator.serial.requestPort({});
+    transport = new Transport(port, true);
+    esploader = new ESPLoader({
+      transport,
+      baudrate: 921600,
+      terminal: espLoaderTerminal,
+    });
+    log("Detecting chip...", "dim");
+    const chip = await esploader.main();
+    log(`Connected: ${chip}`, "ok");
+    btnFlash.disabled = false;
+    btnDisconnect.disabled = false;
+  } catch (e) {
+    log(`Connect failed: ${e.message || e}`, "err");
+    btnConnect.disabled = false;
+    port = null; transport = null; esploader = null;
+  }
+});
+
+btnDisconnect.addEventListener("click", async () => {
+  try { if (transport) await transport.disconnect(); } catch {}
+  port = null; transport = null; esploader = null;
+  btnConnect.disabled = false; btnFlash.disabled = true; btnDisconnect.disabled = true;
+  log("Disconnected.", "dim");
+});
+
+btnFlash.addEventListener("click", async () => {
+  if (!esploader) return;
+  btnFlash.disabled = true; btnDisconnect.disabled = true;
+  setBar(0);
+  try {
+    log("Fetching latest firmware...", "dim");
+    const manifest = await fetchReleaseManifest();
+    log(`Manifest: ${manifest.ref || RELEASES_TAG} (${manifest.build || "unknown build"})`, "dim");
+
+    const fileArray = [];
+    for (const f of manifest.files) {
+      log(`  ${f.path} → ${f.offset}`, "dim");
+      const data = await fetchRelease(f.path);
+      fileArray.push({ data, address: parseInt(f.offset, 16) });
+    }
+
+    log("Erasing flash...", "dim");
+    await esploader.eraseFlash();
+
+    log("Writing flash...", "dim");
+    await esploader.writeFlash({
+      fileArray,
+      flashSize: "8MB",
+      flashMode: "dio",
+      flashFreq: "80m",
+      eraseAll: false,
+      compress: true,
+      reportProgress: (idx, written, total) => {
+        // 3 files; show overall progress as cumulative file index.
+        const pct = ((idx / fileArray.length) + (written / total) / fileArray.length) * 100;
+        setBar(pct);
+      },
+    });
+    setBar(100);
+    log("Flash complete. Rebooting device...", "ok");
+    await esploader.hardReset();
+    log("Done. Unplug, then plug back in to start the device.", "ok");
+  } catch (e) {
+    log(`Flash failed: ${e.message || e}`, "err");
+  } finally {
+    btnFlash.disabled = false;
+    btnDisconnect.disabled = false;
+  }
+});
+
+// ---- release fetching ----
+//
+// GitHub Releases assets are served from objects.githubusercontent.com
+// with permissive CORS, so a direct fetch from a github.io page works.
+async function fetchReleaseManifest() {
+  const url = `https://github.com/${OWNER}/${REPO}/releases/${RELEASES_TAG}/download/manifest.json`;
+  const r = await fetch(url, { redirect: "follow" });
+  if (!r.ok) throw new Error(`manifest fetch HTTP ${r.status}`);
+  return r.json();
+}
+async function fetchRelease(path) {
+  const url = `https://github.com/${OWNER}/${REPO}/releases/${RELEASES_TAG}/download/${path}`;
+  const r = await fetch(url, { redirect: "follow" });
+  if (!r.ok) throw new Error(`${path} fetch HTTP ${r.status}`);
+  // esptool-js wants a binary STRING (one byte per char) — same as
+  // FileReader's readAsBinaryString output.
+  const buf = await r.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return s;
+}
+</script>
+</body>
+</html>
