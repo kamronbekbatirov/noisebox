@@ -190,8 +190,10 @@ Mode** turned on — permission to read and send on their behalf, through
 ever sees opaque base64; it cannot read NoiseBox plaintext. But the
 permission has to be granted for the carrier to work at all.
 
-> Telegram for Business is **free** since the December 2024 update —
-> no Premium subscription required to add a chatbot.
+> Since the Bot API 10.0 update (May 2026), **regular Telegram users
+> without a Premium subscription** can add Secretary Bots to Chat
+> Automation, granting the bot permission to read and send messages on
+> their behalf in DMs. Premium is no longer required on either side.
 
 In the Telegram client, DM the bot once and send `/start`. The bot
 replies with platform-specific instructions; reproduced here for
