@@ -128,7 +128,11 @@ should appear as a serial device.</p>
 </main>
 
 <script type="module">
-import { ESPLoader, Transport } from "https://unpkg.com/esptool-js@0.5.2/bundle.js";
+// esptool-js v0.5.2 on unpkg had a stub-loader bug that died with
+// "Failed to execute 'atob' on 'Window': string not correctly encoded"
+// during 'Uploading stub...'. Pinning a known-good version on jsdelivr
+// (better module MIME than unpkg for some browsers).
+import { ESPLoader, Transport } from "https://cdn.jsdelivr.net/npm/esptool-js@0.5.4/bundle.js";
 
 const RELEASES_TAG = "latest";   // "latest" follows the most-recent release tag
 const OWNER = "kamronbekbatirov";
