@@ -119,12 +119,16 @@ static const uint16_t LOGO_ROWS[10] = {
 };
 
 void ui_draw_logo(int x0, int y0, int cell, color_t fg) {
+    // Leave a 1px gutter inside each cell so adjacent filled cells stay
+    // visually distinct — matches the brand SVG's 2-unit-on-20 pixel grid
+    // and avoids the "solid blob" look we'd get with a back-to-back fill.
+    int block = cell > 2 ? cell - 1 : cell;
     for (int r = 0; r < 10; r++) {
         uint16_t row = LOGO_ROWS[r];
         for (int c = 0; c < 10; c++) {
             if (row & (1u << c)) {
                 display_fill_rect(x0 + c * cell, y0 + r * cell,
-                                  cell, cell, fg);
+                                  block, block, fg);
             }
         }
     }
@@ -133,18 +137,18 @@ void ui_draw_logo(int x0, int y0, int cell, color_t fg) {
 void ui_splash(void) {
     display_clear(COL_BLACK);
 
-    // Logo: 10 cells of 7 px = 70 px tall block, centred horizontally,
-    // sitting in the upper third of the 240x135 screen so the wordmark
-    // can breathe beneath it.
-    const int cell = 7;
+    // Logo: 10 cells × 9 px = 90 px square (8 px block + 1 px gutter per
+    // cell). Centred horizontally; sits in the upper portion of the
+    // 240×135 screen so the wordmark + hint can breathe beneath it.
+    const int cell = 9;
     const int logo_w = 10 * cell;
     int lx = (LCD_W - logo_w) / 2;
-    int ly = 6;
+    int ly = 4;
     ui_draw_logo(lx, ly, cell, COL_PAPER);
 
-    // Wordmark — kept in JetBrains-Mono-feel uppercase to match the brand.
+    // Wordmark — JetBrains-Mono-feel uppercase to match the brand banner.
     int ty = ly + logo_w + 6;
-    display_center_str(ty, "NOISEBOX", COL_PAPER, COL_BLACK);
+    display_center_str(ty, "noisebox", COL_PAPER, COL_BLACK);
 
     // Subtle hint at the bottom — dim so it doesn't compete with the mark.
     display_center_str(LCD_H - 16, "press enter", COL_DIM, COL_BLACK);
