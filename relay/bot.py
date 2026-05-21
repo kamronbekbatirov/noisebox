@@ -974,11 +974,20 @@ def make_http_app(relay: Relay, bot_token: str) -> web.Application:
         entry["claimed"] = True
         token = entry["device_token"]
         uid   = entry["user_chat_id"]
+        # /pair NNNNNN intentionally means "this is my current Cardputer;
+        # forget the previous one(s)". Without this, wipe+re-pair on the
+        # device side leaves orphan device_tokens in device_to_user that
+        # the user never uses but keep showing in /devices.
+        stale = [t for t, u in relay.device_to_user.items() if u == uid]
+        for t in stale:
+            relay.device_to_user.pop(t, None)
+            relay.device_last_seen.pop(t, None)
         relay.device_to_user[token] = uid
         relay.pending_device_bind.pop(code, None)
         relay.user_to_device_code.pop(uid, None)
         relay._save_state()
-        log.info("device bound: user=%s token=%s..", uid, token[:8])
+        log.info("device bound: user=%s token=%s.. (cleared %d stale)",
+                 uid, token[:8], len(stale))
         return web.json_response({
             "ok": True, "bound": True,
             "user_chat_id": uid,
