@@ -103,7 +103,7 @@ void ui_spinner_end(void) {
 //
 // The NoiseBox mark is a 10x10 pixel-art grid. We store it as 10 uint16_t
 // rows where bit `c` of row `r` is set iff that cell is "ink". This is the
-// exact same shape as docs/brand/noisebox-mark-paper.svg /-mark-ink.svg.
+// exact same shape as docs/brand/noisebox-mark-paper.png /-mark-ink.png.
 
 static const uint16_t LOGO_ROWS[10] = {
     0x007F, // row 0: ####### . . .
@@ -120,7 +120,7 @@ static const uint16_t LOGO_ROWS[10] = {
 
 void ui_draw_logo(int x0, int y0, int cell, color_t fg) {
     // Leave a 1px gutter inside each cell so adjacent filled cells stay
-    // visually distinct — matches the brand SVG's 2-unit-on-20 pixel grid
+    // visually distinct — matches the brand PNG's 2-unit-on-20 pixel grid
     // and avoids the "solid blob" look we'd get with a back-to-back fill.
     int block = cell > 2 ? cell - 1 : cell;
     for (int r = 0; r < 10; r++) {
