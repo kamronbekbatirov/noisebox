@@ -137,6 +137,11 @@ class Relay:
         # on startup.
         self.device_to_user: Dict[str, int] = {}
 
+        # device_token -> unix-ts of the last authenticated API hit. Lets
+        # /devices show "last seen N minutes ago" so the user can tell
+        # which token corresponds to a Cardputer that's actually around.
+        self.device_last_seen: Dict[str, int] = {}
+
         # IP rate limit for unauthenticated /bind_poll calls. Maps IP to
         # (window_start_ts, count). Reset every 10 seconds.
         self.bind_rl: Dict[str, Tuple[int, int]] = {}
@@ -166,6 +171,7 @@ class Relay:
         self.pending_device_bind = st.get("pending_device_bind", {}) or {}
         self.user_to_device_code = {int(k): v for k, v in st.get("user_to_device_code", {}).items()}
         self.device_to_user      = {k: int(v) for k, v in st.get("device_to_user", {}).items()}
+        self.device_last_seen    = {k: int(v) for k, v in st.get("device_last_seen", {}).items()}
         self.offset = int(st.get("offset", 0))
         log.info(
             "loaded state: users=%d peers_entries=%d pending_pairs=%d offset=%d",
@@ -199,6 +205,7 @@ class Relay:
             "pending_device_bind": self.pending_device_bind,
             "user_to_device_code": self.user_to_device_code,
             "device_to_user":      self.device_to_user,
+            "device_last_seen":    self.device_last_seen,
             "offset": self.offset,
         }
         return st
@@ -397,17 +404,121 @@ class Relay:
         # alias for /unpeer - "unpair" is what users actually look for
         return await self.cmd_unpeer(chat_id, arg)
 
-    async def cmd_unbind(self, chat_id: int):
-        # Forget any pending device code (the Cardputer is presumed gone or
-        # being swapped).  The user can /pair a fresh code when ready.
-        code = self.user_to_device_code.pop(chat_id, None)
-        if code:
-            self.pending_device_bind.pop(code, None)
+    # ---- /devices and /unbind -------------------------------------------
+
+    def _devices_for(self, chat_id: int):
+        """All active device_tokens for `chat_id`, freshest first.
+        Returns a list of (token, last_seen_ts) tuples."""
+        out = [(tok, self.device_last_seen.get(tok, 0))
+               for tok, uid in self.device_to_user.items()
+               if uid == chat_id]
+        # Most-recently-seen first; never-seen sinks to the bottom.
+        out.sort(key=lambda x: -x[1])
+        return out
+
+    @staticmethod
+    def _format_last_seen(ts: int) -> str:
+        if not ts:
+            return "never seen"
+        age = now_ts() - ts
+        if age < 0:    return "just now"
+        if age < 60:   return f"{age}s ago"
+        if age < 3600: return f"{age // 60}m ago"
+        if age < 86400:return f"{age // 3600}h ago"
+        return f"{age // 86400}d ago"
+
+    async def cmd_devices(self, chat_id: int):
+        devices = self._devices_for(chat_id)
+        pending = self.user_to_device_code.get(chat_id)
+        lines = []
+        if devices:
+            lines.append("Bound Cardputers:")
+            for i, (tok, ts) in enumerate(devices, 1):
+                lines.append(f"  {i}. id {tok[:8]}…   last seen {self._format_last_seen(ts)}")
+        else:
+            lines.append("No Cardputers are bound to your account.")
+        if pending:
+            lines.append("")
+            lines.append(f"Pending pair code: {pending} "
+                         "(/pair NNNNNN to claim from a device)")
+        if devices:
+            lines.append("")
+            lines.append("/unbind N      detach Cardputer N (e.g. /unbind 1)")
+            lines.append("/unbind all    detach every Cardputer at once")
+        await self.tg_send(chat_id, "\n".join(lines))
+
+    async def cmd_unbind(self, chat_id: int, arg: str = ""):
+        """Detach a bound Cardputer (or all of them).
+
+        No arg + 1 device  → unbinds that single one (matches old UX).
+        No arg + multi     → shows the list, asks for an index.
+        '/unbind N'        → unbinds the Nth device (1-based, freshest first).
+        '/unbind all'      → unbinds every device the user owns.
+        Pending pair codes are always cleared as a side-effect.
+        """
+        arg = arg.strip().lower()
+        devices = self._devices_for(chat_id)
+
+        # Clear any in-flight /pair NNNNNN no matter what — the user is
+        # changing their setup.
+        pending_code = self.user_to_device_code.pop(chat_id, None)
+        if pending_code:
+            self.pending_device_bind.pop(pending_code, None)
+
+        if not devices:
+            self._save_state()
+            msg = "No Cardputers were bound."
+            if pending_code:
+                msg += f"\nCleared pending pair code {pending_code}."
+            msg += "\n/pair NNNNNN to add one."
+            await self.tg_send(chat_id, msg)
+            return
+
+        # Pick the target device(s).
+        targets = []
+        if arg == "all":
+            targets = list(range(len(devices)))
+        elif arg == "":
+            if len(devices) == 1:
+                targets = [0]
+            else:
+                self._save_state()
+                await self.cmd_devices(chat_id)
+                return
+        elif arg.isdigit():
+            n = int(arg)
+            if 1 <= n <= len(devices):
+                targets = [n - 1]
+        else:
+            # Allow short-hash prefix as a convenience.
+            matches = [i for i, (tok, _) in enumerate(devices)
+                       if tok.startswith(arg)]
+            if len(matches) == 1:
+                targets = matches
+
+        if not targets:
+            self._save_state()
+            await self.tg_send(chat_id,
+                f"Could not match '{arg}'. /devices to list, then "
+                f"/unbind N (1-{len(devices)}) or /unbind all.")
+            return
+
+        removed = []
+        for i in targets:
+            tok, _ = devices[i]
+            self.device_to_user.pop(tok, None)
+            self.device_last_seen.pop(tok, None)
+            removed.append(f"{i+1} ({tok[:8]}…)")
         self._save_state()
-        await self.tg_send(chat_id,
-            "Old device unbound. On the new Cardputer go to\n"
-            "Settings -> 'Unbind device' -> power-cycle.\n"
-            "Then it will show a fresh 6-digit code, and you /pair NNNNNN here.")
+
+        if len(removed) == 1:
+            body = f"Detached Cardputer {removed[0]}."
+        else:
+            body = f"Detached {len(removed)} Cardputers:\n  " + "\n  ".join(removed)
+        body += ("\n\nEach detached device will hit auth-failed on its "
+                 "next request. The user sees a Connection failed menu "
+                 "with Retry / Settings / Reboot.")
+        await self.tg_send(chat_id, body)
 
     async def cmd_status(self, chat_id: int):
         pendings = [k for k in self.pending_pair if chat_id in k]
@@ -551,15 +662,18 @@ class Relay:
             await self.cmd_unpeer(chat_id, rest)
         elif cmd == "/status":
             await self.cmd_status(chat_id)
+        elif cmd == "/devices":
+            await self.cmd_devices(chat_id)
         elif cmd == "/unbind":
-            await self.cmd_unbind(chat_id)
+            await self.cmd_unbind(chat_id, rest)
         elif cmd == "/accept":
             await self.cmd_accept(chat_id, rest)
         elif cmd == "/reject":
             await self.cmd_reject(chat_id, rest)
         else:
             await self.tg_send(chat_id,
-                "Commands: /start, /pair NNNNNN, /peers, /unpeer USER, /status, /accept, /reject.")
+                "Commands: /start, /pair NNNNNN, /peers, /unpeer USER, "
+                "/devices, /unbind, /status, /accept, /reject.")
 
     async def handle_business_connection(self, bc: dict):
         conn_id = bc["id"]
@@ -796,12 +910,17 @@ def make_http_app(relay: Relay, bot_token: str) -> web.Application:
         return None
 
     def device_auth(request: web.Request):
-        """Returns (user_chat_id, None) on success, or (None, error_response)."""
+        """Returns (user_chat_id, None) on success, or (None, error_response).
+
+        Also stamps `device_last_seen[token] = now()` so /devices can
+        show users when each of their bound Cardputers last phoned home.
+        """
         token = request.match_info.get("token", "")
         user_chat_id = relay.device_to_user.get(token)
         if user_chat_id is None:
             return None, web.json_response(
                 {"ok": False, "error": "auth"}, status=401)
+        relay.device_last_seen[token] = now_ts()
         return user_chat_id, None
 
     @routes.get("/v1/{token}/health")
