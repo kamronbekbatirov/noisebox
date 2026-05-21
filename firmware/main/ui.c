@@ -137,22 +137,42 @@ void ui_draw_logo(int x0, int y0, int cell, color_t fg) {
 void ui_splash(void) {
     display_clear(COL_BLACK);
 
-    // Logo: 10 cells × 9 px = 90 px square (8 px block + 1 px gutter per
-    // cell). Centred horizontally; sits in the upper portion of the
-    // 240×135 screen so the wordmark + hint can breathe beneath it.
-    const int cell = 9;
+    // Compact mark: 10 cells × 6 px = 60 px square (5 px block + 1 px
+    // gutter per cell). Centred horizontally, leaves room for the
+    // wordmark + hint without crowding the 240×135 LCD.
+    const int cell = 6;
     const int logo_w = 10 * cell;
     int lx = (LCD_W - logo_w) / 2;
-    int ly = 4;
+    int ly = 8;
     ui_draw_logo(lx, ly, cell, COL_PAPER);
 
-    // Wordmark — JetBrains-Mono-feel uppercase to match the brand banner.
-    int ty = ly + logo_w + 6;
+    // Wordmark — lowercase to match the horizontal banner in the README.
+    int ty = ly + logo_w + 8;
     display_center_str(ty, "noisebox", COL_PAPER, COL_BLACK);
 
     // Subtle hint at the bottom — dim so it doesn't compete with the mark.
     display_center_str(LCD_H - 16, "press enter", COL_DIM, COL_BLACK);
 
+    // Animated "noise" sparks around the right edge of the silhouette.
+    // (col, row, phase) — each spark is on for ON_WIDTH frames of a
+    // CYCLE-frame cycle, with per-spark phase offset so the crackle
+    // looks organic rather than synchronised. None of these cells lie
+    // inside the core LOGO_ROWS shape, so toggling them to black never
+    // erases part of the mark.
+    static const uint8_t SPARKS[][3] = {
+        {7, 0, 0}, {8, 1, 2}, {6, 2, 4}, {7, 3, 6},
+        {9, 4, 1}, {8, 5, 3}, {8, 6, 5}, {9, 7, 7},
+    };
+    const int N_SPARKS  = sizeof(SPARKS) / sizeof(SPARKS[0]);
+    const int CYCLE     = 12;
+    const int ON_WIDTH  = 3;
+    const int FRAME_MS  = 180;
+    const int POLL_MS   = 20;
+    const int TICKS_PER_FRAME = FRAME_MS / POLL_MS;
+
+    int block = cell > 2 ? cell - 1 : cell;
+    int frame = 0;
+    int ticks = 0;
     while (1) {
         key_event_t e;
         if (kbd_poll(&e)) {
@@ -160,7 +180,20 @@ void ui_splash(void) {
                     || e.kind == KEY_EV_ESC) return;
             if (e.kind == KEY_EV_CHAR && (e.ch == '`' || e.ch == ' ')) return;
         }
-        vTaskDelay(pdMS_TO_TICKS(20));
+        vTaskDelay(pdMS_TO_TICKS(POLL_MS));
+        if (++ticks >= TICKS_PER_FRAME) {
+            ticks = 0;
+            for (int i = 0; i < N_SPARKS; i++) {
+                int c  = SPARKS[i][0];
+                int r  = SPARKS[i][1];
+                int ph = SPARKS[i][2];
+                bool on = ((frame + ph) % CYCLE) < ON_WIDTH;
+                color_t col = on ? COL_PAPER : COL_BLACK;
+                display_fill_rect(lx + c * cell, ly + r * cell,
+                                  block, block, col);
+            }
+            frame++;
+        }
     }
 }
 
