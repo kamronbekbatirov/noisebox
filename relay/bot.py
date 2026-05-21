@@ -686,14 +686,39 @@ class Relay:
             sorted(k for k, v in rights.items() if v),
         )
         if enabled:
+            # Telegram fires this event NOT just on the first time the
+            # user attaches the bot, but ALSO every time they change the
+            # bot's settings — toggling which chats it can see, the
+            # "Reply / Access" toggles, etc. Without the guard below we
+            # spam the welcome text once per tweak, which looks broken.
+            previously_connected = user_chat_id in self.user_to_conn
+            old_conn_id = self.user_to_conn.get(user_chat_id)
+            if old_conn_id and old_conn_id != conn_id:
+                # Telegram rotated the connection id (rare, but it can
+                # happen). Forget the stale reverse mapping.
+                self.conn_to_user.pop(old_conn_id, None)
             self.user_to_conn[user_chat_id] = conn_id
             self.conn_to_user[conn_id] = user_chat_id
-            try:
-                await self.tg_send(user_chat_id,
-                    "✓ Business mode connected. "
-                    "Now /pair NNNNNN to link your Cardputer, then /pairnoise in any chat to add a friend.")
-            except Exception:
-                pass
+            if not previously_connected:
+                # First-time enable: send the onboarding nudge. Tailor
+                # it to the user's actual state so we don't tell someone
+                # with a device already bound to run /pair again.
+                msg = "✓ Business mode connected.\n"
+                has_device = any(u == user_chat_id
+                                 for u in self.device_to_user.values())
+                has_peers  = bool(self.peers.get(user_chat_id))
+                if not has_device:
+                    msg += "Now /pair NNNNNN to link your Cardputer."
+                    if not has_peers:
+                        msg += "\nThen /pairnoise in any chat to add a friend."
+                elif not has_peers:
+                    msg += "/pairnoise in any chat to add a friend."
+                else:
+                    msg += "Welcome back."
+                try:
+                    await self.tg_send(user_chat_id, msg)
+                except Exception:
+                    pass
         else:
             old = self.user_to_conn.pop(user_chat_id, None)
             if old:
