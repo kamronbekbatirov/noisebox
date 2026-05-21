@@ -1,0 +1,31 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "ui.c"
+        "wifi.c"
+        "transport.c"
+        "session.c"
+        "crypto.c"
+        "pairing.c"
+        "ratchet.c"
+        "sas.c"
+        "base64.c"
+        "storage.c"
+        "display.cpp"
+        "font8x16.c"
+        "keyboard.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        nvs_flash
+        esp_wifi
+        esp_event
+        esp_netif
+        esp_http_client
+        esp-tls
+        mbedtls
+        driver
+        json
+        esp_driver_i2c
+        esp_driver_gpio
+)

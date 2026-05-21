@@ -1,0 +1,25 @@
+[Unit]
+Description=Cardputer secure messenger relay bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cardputer
+WorkingDirectory=/opt/cardputer-relay/relay
+EnvironmentFile=/opt/cardputer-relay/.env
+ExecStart=/opt/cardputer-relay/venv/bin/python /opt/cardputer-relay/relay/bot.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/cardputer-relay
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,33 @@
+# ---------- secrets (NEVER commit) ----------
+firmware/main/config.h
+relay/.env
+relay/ghost_identity.bin
+relay/state.json
+relay/state.json.tmp
+relay/state.json.old
+
+# ---------- ESP-IDF build output ----------
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+firmware/dependencies.lock
+
+# ---------- editor / OS noise ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ---------- Python ----------
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# ---------- misc ----------
+*.log

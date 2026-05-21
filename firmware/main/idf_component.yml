@@ -1,0 +1,11 @@
+## IDF Component Manager Manifest File
+##
+## We pull M5GFX (which itself depends on M5Unified / LovyanGFX) so the LCD
+## panel is initialised by the same battle-tested code path that drives
+## the official M5Cardputer-UserDemo.
+
+dependencies:
+  idf:
+    version: ">=5.0"
+  m5stack/m5gfx:
+    version: "^0.2.0"
