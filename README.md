@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="docs/brand/noisebox-mark-paper.svg#gh-dark-mode-only" width="128" alt="NoiseBox" />
-  <img src="docs/brand/noisebox-mark-ink.svg#gh-light-mode-only"  width="128" alt="NoiseBox" />
+  <img src="docs/brand/noisebox-mark-paper-anim.svg#gh-dark-mode-only" width="160" alt="NoiseBox" />
+  <img src="docs/brand/noisebox-mark-ink-anim.svg#gh-light-mode-only"  width="160" alt="NoiseBox" />
 
   <h1>NoiseBox</h1>
 

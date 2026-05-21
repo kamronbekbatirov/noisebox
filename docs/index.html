@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NoiseBox</title>
+<link rel="icon" href="brand/noisebox-mark-paper.svg">
+<style>
+  :root { --paper: #efece6; --ink: #0b0b0d; --dim: #6a6a6e; --line: #2a2a2c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--ink); color: var(--paper);
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 14px; line-height: 1.55; min-height: 100vh; }
+  main { max-width: 640px; margin: 0 auto; padding: 80px 24px 96px; text-align: center; }
+  .mark { width: 160px; height: 160px; image-rendering: pixelated; margin: 0 auto 24px; display: block; }
+  h1 { margin: 0 0 8px; font-size: 32px; letter-spacing: 0.06em; font-weight: 600; }
+  .tagline { color: var(--dim); margin: 0 0 40px; font-size: 14px; }
+  .links { display: flex; flex-direction: column; gap: 10px; max-width: 320px; margin: 0 auto; }
+  .links a { display: block; padding: 14px 18px; background: var(--paper); color: var(--ink);
+    text-decoration: none; font-weight: 600; border-radius: 2px;
+    transition: opacity 0.15s; }
+  .links a:hover { opacity: 0.85; }
+  .links a.ghost { background: transparent; color: var(--paper); border: 1px solid var(--paper); }
+  footer { color: var(--dim); font-size: 12px; margin-top: 48px;
+    border-top: 1px solid var(--line); padding-top: 16px; }
+  footer a { color: var(--paper); }
+</style>
+</head>
+<body>
+<main>
+  <img class="mark" src="brand/noisebox-mark-paper-anim.svg" alt="NoiseBox">
+  <h1>NoiseBox</h1>
+  <p class="tagline">End-to-end encrypted text between two M5Cardputer-Adv devices.<br>Telegram is just the wire.</p>
+
+  <div class="links">
+    <a href="flash/">Flash a Cardputer →</a>
+    <a class="ghost" href="https://github.com/kamronbekbatirov/noisebox">Source on GitHub</a>
+  </div>
+
+  <footer>
+    AGPL-3.0 · ESP32-S3 · X25519 + ChaCha20-Poly1305 + SAS
+  </footer>
+</main>
+</body>
+</html>
