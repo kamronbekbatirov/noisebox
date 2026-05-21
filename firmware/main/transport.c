@@ -230,20 +230,36 @@ int tx_get_peers(tx_peer_t *out, int cap) {
             if (cJSON_IsArray(peers)) {
                 int total = cJSON_GetArraySize(peers);
                 for (int i = 0; i < total && n < cap; i++) {
-                    cJSON *p = cJSON_GetArrayItem(peers, i);
+                    cJSON *p   = cJSON_GetArrayItem(peers, i);
                     cJSON *uid = cJSON_GetObjectItem(p, "user_id");
                     cJSON *fn  = cJSON_GetObjectItem(p, "first_name");
+                    cJSON *ln  = cJSON_GetObjectItem(p, "last_name");
                     cJSON *un  = cJSON_GetObjectItem(p, "username");
                     if (!cJSON_IsNumber(uid)) continue;
                     out[n].user_id = (int64_t)uid->valuedouble;
                     const char *f = (fn && fn->valuestring) ? fn->valuestring : "";
+                    const char *l = (ln && ln->valuestring) ? ln->valuestring : "";
                     const char *u = (un && un->valuestring) ? un->valuestring : "";
-                    if (u && u[0]) {
+                    // Display-name priority (no field guarantees a value):
+                    //   "First Last @user", "First @user", "First Last",
+                    //   "First", "Last", "@user", "User <id>".
+                    if (f[0] && u[0] && l[0]) {
+                        snprintf(out[n].name, TX_PEER_NAME, "%s %s @%s", f, l, u);
+                    } else if (f[0] && u[0]) {
                         snprintf(out[n].name, TX_PEER_NAME, "%s @%s", f, u);
+                    } else if (f[0] && l[0]) {
+                        snprintf(out[n].name, TX_PEER_NAME, "%s %s", f, l);
                     } else if (f[0]) {
                         snprintf(out[n].name, TX_PEER_NAME, "%s", f);
+                    } else if (l[0]) {
+                        snprintf(out[n].name, TX_PEER_NAME, "%s", l);
+                    } else if (u[0]) {
+                        snprintf(out[n].name, TX_PEER_NAME, "@%s", u);
                     } else {
-                        snprintf(out[n].name, TX_PEER_NAME, "%lld", (long long)out[n].user_id);
+                        // Fall back to a 4-digit suffix of the ID. Full
+                        // 64-bit IDs look like garbage on the menu.
+                        long long lid = (long long)out[n].user_id;
+                        snprintf(out[n].name, TX_PEER_NAME, "User %04lld", lid % 10000);
                     }
                     n++;
                 }

@@ -264,6 +264,35 @@ class Relay:
             chat_id=chat_id, text=text,
         )
 
+    async def fetch_user_info(self, chat_id: int) -> dict:
+        """One-shot getChat to grab first_name/last_name/username.
+
+        Used when a /pairnoise event is delivered from one user's business
+        connection but doesn't carry the owner's display name in the
+        payload (Telegram only embeds the SENDER's user info, not the
+        owner's). Calling getChat fills the blanks so the on-device peer
+        list shows real names instead of bare numeric IDs.
+        """
+        r = await self.call("getChat", chat_id=chat_id)
+        if not r.get("ok"):
+            return {"user_id": chat_id}
+        c = r.get("result", {}) or {}
+        return {
+            "user_id": chat_id,
+            "first_name": c.get("first_name", ""),
+            "last_name":  c.get("last_name",  ""),
+            "username":   c.get("username",   ""),
+        }
+
+    @staticmethod
+    def _info_is_thin(info: dict) -> bool:
+        """True if a peer-info dict has nothing displayable beyond ID."""
+        return not (
+            (info.get("first_name") or "").strip()
+            or (info.get("last_name") or "").strip()
+            or (info.get("username") or "").strip()
+        )
+
     # --- DM commands ---
 
     async def cmd_start(self, chat_id: int):
@@ -605,7 +634,10 @@ class Relay:
                 "username": chat.get("username", ""),
             }
         else:
-            # Someone wrote /pairnoise in their chat with owner.
+            # Someone wrote /pairnoise in their chat with owner. The
+            # business_message payload only carries the sender's user
+            # info, so the owner side starts as a stub and we enrich it
+            # via getChat below.
             peer_id = from_id
             peer_info = {
                 "user_id": peer_id,
@@ -613,7 +645,15 @@ class Relay:
                 "last_name": from_user.get("last_name", ""),
                 "username": from_user.get("username", ""),
             }
-            owner_info = {"user_id": owner}
+            owner_info = await self.fetch_user_info(owner)
+
+        # Belt-and-braces enrich: if either side ended up display-name-less
+        # (e.g. chat object came back without first_name on the inline
+        # message), pull a fresh copy from getChat now.
+        if self._info_is_thin(peer_info):
+            peer_info = await self.fetch_user_info(peer_id)
+        if self._info_is_thin(owner_info):
+            owner_info = await self.fetch_user_info(owner)
 
         if not peer_id or peer_id == owner:
             return

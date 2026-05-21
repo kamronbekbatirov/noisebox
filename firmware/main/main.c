@@ -388,11 +388,18 @@ static int screen_handshake(int64_t peer_id, const char *peer_name) {
                         "press enter to go back");
         return -3;
     }
+    // Wait for the peer's HELLO. Track real wall-clock time via tick
+    // counts — naive +200ms per iter is wrong because tx_poll long-polls
+    // up to 10 s, which would push the effective timeout into the tens
+    // of minutes. 30 s is more than enough for an awake peer; longer
+    // than that and the friend almost certainly doesn't have a Cardputer
+    // flashed (and they're staring at base64 in Telegram, sorry).
     tx_msg_t in[4];
-    int waited_ms = 0;
+    const int HANDSHAKE_TIMEOUT_MS = 30000;
+    TickType_t start_tick = xTaskGetTickCount();
     while (!session_both_hellos()) {
         ui_spinner_tick();
-        int got = tx_poll(&after, in, 4, 10);
+        int got = tx_poll(&after, in, 4, 5);   // 5-s long-poll, smaller
         if (got > 0) {
             for (int i = 0; i < got; i++) {
                 if (in[i].from != peer_id) continue;
@@ -403,11 +410,15 @@ static int screen_handshake(int64_t peer_id, const char *peer_name) {
         }
         key_event_t e;
         if (kbd_poll(&e) && e.kind == KEY_EV_ESC) return -1;
-        waited_ms += 200;
-        if (waited_ms > 60000) {
+        int elapsed_ms = (int)((xTaskGetTickCount() - start_tick) *
+                               portTICK_PERIOD_MS);
+        if (elapsed_ms > HANDSHAKE_TIMEOUT_MS) {
             ui_show_message("Handshake",
-                            "timeout - peer didn't\nreply within 60s",
-                            "press enter then esc");
+                            "No reply in 30s.\n"
+                            "Friend may not have a\n"
+                            "Cardputer flashed, or\n"
+                            "they're offline.",
+                            "enter to go back");
             return -4;
         }
         vTaskDelay(pdMS_TO_TICKS(200));
