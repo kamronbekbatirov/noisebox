@@ -43,6 +43,7 @@ jobs:
           idf.py build
 
       - name: Stage binaries
+        shell: bash
         run: |
           mkdir -p dist
           cp firmware/build/cardputer_messenger.bin              dist/
