@@ -1,15 +1,14 @@
-<div align="center">
-  <img src="docs/brand/noisebox-mark-paper.png#gh-dark-mode-only" width="140" alt="noisebox" />
-  <img src="docs/brand/noisebox-mark-ink.png#gh-light-mode-only"  width="140" alt="noisebox" />
+<h1 align="center">
+  <img src="docs/brand/noisebox-mark-paper.png#gh-dark-mode-only" alt="" height="72" align="absmiddle" />
+  <img src="docs/brand/noisebox-mark-ink.png#gh-light-mode-only"  alt="" height="72" align="absmiddle" />
+  &nbsp;noisebox
+</h1>
 
-  <h1>noisebox</h1>
-
-  <p>
-    End-to-end encrypted messenger between two
-    <strong>M5Cardputer-Adv</strong> devices,
-    with Telegram Business Mode as the transport.
-  </p>
-</div>
+<p align="center">
+  End-to-end encrypted messenger between two
+  <strong>M5Cardputer-Adv</strong> devices,
+  with Telegram Business Mode as the transport.
+</p>
 
 ```
 ┌──────────────┐     base64 ciphertext     ┌──────────────┐
