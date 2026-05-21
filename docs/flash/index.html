@@ -34,7 +34,13 @@
     border-bottom: 1px solid var(--line);
     padding-bottom: 20px; margin-bottom: 28px;
   }
-  header img { width: 80px; height: 80px; image-rendering: pixelated; }
+  /* No pixelated rendering — PNG is rasterised at 2048px and downscales
+     to 80px is ~25x. Nearest-neighbour at that ratio rounds the 2-px
+     gutter between cells to 0 or 1, producing the "flickering" /
+     missing-square artefact at certain browser zoom levels. Letting
+     the browser smooth-downscale keeps the gutter visible at every
+     zoom. */
+  header img { width: 80px; height: 80px; }
   header h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: 0.02em; }
   header p { margin: 4px 0 0; color: var(--dim); font-size: 13px; }
   h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); margin: 32px 0 12px; }
@@ -80,7 +86,7 @@
 <main>
 
 <header>
-  <img src="../brand/noisebox-mark-paper.png" alt="noisebox logo" style="image-rendering:pixelated">
+  <img src="../brand/noisebox-mark-paper.png" alt="noisebox logo">
   <div>
     <h1>Flash your noisebox</h1>
     <p>Web Serial firmware installer for M5Cardputer-Adv</p>
@@ -134,9 +140,11 @@ should appear as a serial device.</p>
 // (better module MIME than unpkg for some browsers).
 import { ESPLoader, Transport } from "https://cdn.jsdelivr.net/npm/esptool-js@0.5.4/bundle.js";
 
-const RELEASES_TAG = "latest";   // "latest" follows the most-recent release tag
-const OWNER = "kamronbekbatirov";
-const REPO  = "noisebox";
+// Firmware binaries are mirrored to docs/firmware/ on every release so
+// the flasher can fetch them same-origin. (GitHub release assets sit
+// on objects.githubusercontent.com which doesn't return CORS headers,
+// so cross-origin fetch from *.github.io blows up with NetworkError.)
+const FIRMWARE_BASE = "../firmware/";
 
 const $ = id => document.getElementById(id);
 const logEl = $("log"), bar = $("bar");
@@ -238,19 +246,18 @@ btnFlash.addEventListener("click", async () => {
   }
 });
 
-// ---- release fetching ----
+// ---- firmware fetching ----
 //
-// GitHub Releases assets are served from objects.githubusercontent.com
-// with permissive CORS, so a direct fetch from a github.io page works.
+// Same-origin GET against docs/firmware/. Pages mirrors the release
+// assets there on every tag so we don't pay the CORS tax that hits
+// objects.githubusercontent.com cross-domain fetches.
 async function fetchReleaseManifest() {
-  const url = `https://github.com/${OWNER}/${REPO}/releases/${RELEASES_TAG}/download/manifest.json`;
-  const r = await fetch(url, { redirect: "follow" });
+  const r = await fetch(`${FIRMWARE_BASE}manifest.json`, { cache: "no-cache" });
   if (!r.ok) throw new Error(`manifest fetch HTTP ${r.status}`);
   return r.json();
 }
 async function fetchRelease(path) {
-  const url = `https://github.com/${OWNER}/${REPO}/releases/${RELEASES_TAG}/download/${path}`;
-  const r = await fetch(url, { redirect: "follow" });
+  const r = await fetch(`${FIRMWARE_BASE}${path}`, { cache: "no-cache" });
   if (!r.ok) throw new Error(`${path} fetch HTTP ${r.status}`);
   // esptool-js wants a binary STRING (one byte per char) — same as
   // FileReader's readAsBinaryString output.
