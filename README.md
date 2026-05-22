@@ -12,18 +12,18 @@
 
 ```
 ┌──────────────┐     base64 ciphertext      ┌──────────────┐
-│  Cardputer   │  ◀──── via Telegram ────▶  │  Cardputer   │
+│  Cardputer   │ <───── via Telegram ─────> │  Cardputer   │
 │   (Alice)    │                            │    (Bob)     │
 └──────┬───────┘                            └───────┬──────┘
        │  HTTPS                                     │  HTTPS
-       ▼                                            ▼
+       v                                            v
 ┌──────────────────────────────────────────────────────────┐
 │            NoiseBox relay (your VPS)                     │
 │  aiohttp + Caddy + Let's Encrypt + Docker Compose        │
 │         never sees plaintext, only opaque base64         │
 └──────────────────────────────────────────────────────────┘
                              │
-                             ▼  Bot API
+                             v  Bot API
                    ┌──────────────────┐
                    │     Telegram     │
                    └──────────────────┘
