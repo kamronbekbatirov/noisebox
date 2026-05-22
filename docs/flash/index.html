@@ -79,6 +79,16 @@
   }
   code { background: #18181b; padding: 1px 6px; border-radius: 2px; font-size: 12px; }
   a { color: var(--paper); }
+  .config { margin: 24px 0 8px; }
+  .config label { display: block; color: var(--dim); margin: 12px 0 4px; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.06em; }
+  .config input { width: 100%; padding: 10px 12px;
+    background: #060607; color: var(--paper); border: 1px solid var(--line);
+    font: inherit; font-size: 13px; border-radius: 2px; }
+  .config input:focus { outline: none; border-color: var(--paper); }
+  .config-checkbox { font-size: 12px; color: var(--dim); margin-top: 12px; }
+  .config-checkbox input { width: auto; vertical-align: middle; margin-right: 6px; }
+  .config-hint { font-size: 12px; color: var(--dim); margin: 8px 0 0; }
   footer { color: var(--dim); font-size: 12px; margin-top: 48px; border-top: 1px solid var(--line); padding-top: 16px; }
 </style>
 </head>
@@ -102,7 +112,32 @@
 <p>Connect your Cardputer-Adv to this computer with a USB-C cable. It
 should appear as a serial device.</p>
 
-<h2>2. Connect &amp; flash</h2>
+<h2>2. Pre-fill device config (optional)</h2>
+<p class="config-hint">
+  Typing a 46-character bot token on the Cardputer's micro-keyboard is
+  miserable. Fill these here and the flasher will write them straight
+  into the device's NVS — first boot will skip the "Relay setup" screen
+  and jump to the bind code.
+</p>
+<p class="config-hint">
+  <strong>Stays in your browser.</strong> The values are written to your
+  Cardputer over USB and never sent to any server. Leave blank to type
+  them on the device instead.
+</p>
+<div class="config">
+  <label for="cfgToken">Bot token</label>
+  <input id="cfgToken" type="text" autocomplete="off" spellcheck="false"
+         placeholder="from @BotFather (e.g. 1234567890:ABCxyz...)">
+  <label for="cfgHost">Relay host</label>
+  <input id="cfgHost" type="text" autocomplete="off" spellcheck="false"
+         placeholder="your VPS domain (e.g. relay.example.com)">
+  <label class="config-checkbox">
+    <input id="cfgRemember" type="checkbox">
+    remember these on this browser (localStorage)
+  </label>
+</div>
+
+<h2>3. Connect &amp; flash</h2>
 <div class="row">
   <button id="btnConnect">Connect</button>
   <button id="btnFlash" disabled>Flash latest</button>
@@ -111,7 +146,7 @@ should appear as a serial device.</p>
 <div class="progress"><div id="bar"></div></div>
 <div id="log"></div>
 
-<h2>3. After flashing</h2>
+<h2>4. After flashing</h2>
 <ol>
   <li>The device boots into a splash screen — press <strong>enter</strong>.</li>
   <li>Pick your Wi-Fi network and enter the password.</li>
@@ -149,10 +184,206 @@ const FIRMWARE_BASE = "../firmware/";
 const $ = id => document.getElementById(id);
 const logEl = $("log"), bar = $("bar");
 const btnConnect = $("btnConnect"), btnFlash = $("btnFlash"), btnDisconnect = $("btnDisconnect");
+const cfgToken = $("cfgToken"), cfgHost = $("cfgHost"), cfgRemember = $("cfgRemember");
+
+// Restore from localStorage (opt-in via the checkbox).
+try {
+  const saved = JSON.parse(localStorage.getItem("noisebox_config") || "{}");
+  if (saved.token) cfgToken.value = saved.token;
+  if (saved.host)  cfgHost.value  = saved.host;
+  if (saved.token || saved.host) cfgRemember.checked = true;
+} catch {}
 
 if (!("serial" in navigator)) {
   $("unsupported").hidden = false;
   btnConnect.disabled = true;
+}
+
+// ============================================================================
+//   Minimal NVS partition encoder
+// ============================================================================
+//
+// Implements just enough of the ESP-IDF NVS v2 binary format to produce a
+// single 24-KB partition image (one active page + 5 erased pages) carrying
+// the two strings the firmware actually reads on boot:
+//
+//   namespace "noisebox":
+//     rly_tok  = <bot token>
+//     rly_host = <relay host>
+//
+// Doc: https://docs.espressif.com/projects/esp-idf/en/v5.4/api-reference/
+//      storage/nvs_flash.html#nvs-data-format
+//
+// Layout per 4096-byte page:
+//   [0..31]    Page header     (state + seq + version + crc)
+//   [32..63]   Entry-state bitmap, 2 bits × 126 entries
+//   [64..4095] 126 × 32-byte entry slots
+//
+// Each "logical" entry occupies one or more slots:
+//   * namespace registration: 1 slot (u8)
+//   * string: 1 header slot + ceil((len+1)/32) data slots, all raw bytes.
+
+const NVS_OFFSET    = 0x9000;
+const NVS_SIZE      = 0x6000;   // matches firmware/partitions.csv
+const NVS_PAGE_SIZE = 4096;
+const NVS_ENTRY_SIZE = 32;
+const NVS_PAGE_VERSION_V2 = 0xFE;
+const NVS_STATE_ACTIVE = [0xFE, 0xFF, 0xFF, 0xFF];
+
+const NVS_TYPE_U8     = 0x01;
+const NVS_TYPE_STRING = 0x21;
+const NVS_NS_MASTER   = 0;
+const NVS_NS_NOISEBOX = 1;
+const NVS_KEY_NAMESPACE = "noisebox";
+
+// --- CRC32 (IEEE 802.3) ---
+const CRC32_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xFFFFFFFF >>> 0;
+  for (let i = 0; i < bytes.length; i++) {
+    c = (CRC32_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8)) >>> 0;
+  }
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function writeU32LE(buf, off, v) {
+  buf[off]   =  v        & 0xFF;
+  buf[off+1] = (v >>> 8)  & 0xFF;
+  buf[off+2] = (v >>> 16) & 0xFF;
+  buf[off+3] = (v >>> 24) & 0xFF;
+}
+
+function nvsPageHeader(seq) {
+  const h = new Uint8Array(NVS_ENTRY_SIZE);
+  h.fill(0xFF);
+  h.set(NVS_STATE_ACTIVE, 0);              // state = ACTIVE
+  writeU32LE(h, 4, seq);                   // sequence number
+  h[8] = NVS_PAGE_VERSION_V2;
+  // bytes 9..27 left as 0xFF (reserved)
+  // CRC32 over bytes 4..27 (24 bytes)
+  writeU32LE(h, 28, crc32(h.subarray(4, 28)));
+  return h;
+}
+
+function nvsEntryStateBitmap(numWritten) {
+  // 11 = empty (default), 10 = written, 00 = erased.
+  // For each entry we clear the LOW bit of its 2-bit pair to mark it written.
+  const b = new Uint8Array(NVS_ENTRY_SIZE);
+  b.fill(0xFF);
+  for (let i = 0; i < numWritten; i++) {
+    const bitOff = i * 2;
+    const byte   = bitOff >> 3;
+    const shift  = bitOff & 7;
+    b[byte] &= ~(1 << shift) & 0xFF;
+  }
+  return b;
+}
+
+function nvsMakeEntry({ nsIdx, type, span, chunkIdx, key, data8 }) {
+  const e = new Uint8Array(NVS_ENTRY_SIZE);
+  e.fill(0xFF);
+  e[0] = nsIdx;
+  e[1] = type;
+  e[2] = span;
+  e[3] = chunkIdx;
+  // bytes 4..7: CRC, filled in below
+  // bytes 8..23: key (16B, null-terminated, padded with 0x00)
+  const keyBytes = new TextEncoder().encode(key);
+  if (keyBytes.length > 15) throw new Error(`nvs key '${key}' too long`);
+  for (let i = 0; i < 16; i++) e[8 + i] = (i < keyBytes.length) ? keyBytes[i] : 0;
+  // bytes 24..31: data
+  e.set(data8, 24);
+  // CRC covers bytes 0..3 + 8..31 (skip the CRC field itself)
+  const crcInput = new Uint8Array(4 + 24);
+  crcInput.set(e.subarray(0, 4), 0);
+  crcInput.set(e.subarray(8, 32), 4);
+  writeU32LE(e, 4, crc32(crcInput));
+  return e;
+}
+
+function nvsNamespaceRegistration(name, idx) {
+  const data8 = new Uint8Array(8);
+  data8[0] = idx;  // bytes 1..7 stay 0
+  return nvsMakeEntry({
+    nsIdx: NVS_NS_MASTER, type: NVS_TYPE_U8,
+    span: 1, chunkIdx: 0xFF, key: name, data8,
+  });
+}
+
+function nvsStringSlots(nsIdx, key, value) {
+  // ESP-IDF stores strings with their trailing NUL — size includes it.
+  const valBytes = new TextEncoder().encode(value + "\0");
+  const dataSlotsNeeded = Math.ceil(valBytes.length / NVS_ENTRY_SIZE);
+  const span = 1 + dataSlotsNeeded;
+
+  const data8 = new Uint8Array(8);
+  // bytes 0..1: size (uint16 LE), bytes 2..3: reserved 0xFFFF,
+  // bytes 4..7: crc32 of the raw value bytes.
+  data8[0] =  valBytes.length        & 0xFF;
+  data8[1] = (valBytes.length >>> 8) & 0xFF;
+  data8[2] = 0xFF; data8[3] = 0xFF;
+  writeU32LE(data8, 4, crc32(valBytes));
+  const header = nvsMakeEntry({
+    nsIdx, type: NVS_TYPE_STRING, span, chunkIdx: 0xFF, key, data8,
+  });
+
+  const slots = [header];
+  for (let i = 0; i < dataSlotsNeeded; i++) {
+    const slot = new Uint8Array(NVS_ENTRY_SIZE);
+    slot.fill(0xFF);
+    const start = i * NVS_ENTRY_SIZE;
+    const end   = Math.min(start + NVS_ENTRY_SIZE, valBytes.length);
+    slot.set(valBytes.subarray(start, end), 0);
+    slots.push(slot);
+  }
+  return slots;
+}
+
+function buildNvsImage({ token, host }) {
+  // Assemble the entry slots that will sit at byte 64 onward of page 0.
+  const slots = [
+    nvsNamespaceRegistration(NVS_KEY_NAMESPACE, NVS_NS_NOISEBOX),
+    ...nvsStringSlots(NVS_NS_NOISEBOX, "rly_tok",  token),
+    ...nvsStringSlots(NVS_NS_NOISEBOX, "rly_host", host),
+  ];
+  const maxSlots = (NVS_PAGE_SIZE - 64) / NVS_ENTRY_SIZE;  // 126
+  if (slots.length > maxSlots) {
+    throw new Error(`nvs entries don't fit in one page (${slots.length}/${maxSlots})`);
+  }
+
+  // Page 0 = active with our entries.
+  const page0 = new Uint8Array(NVS_PAGE_SIZE);
+  page0.fill(0xFF);
+  page0.set(nvsPageHeader(0), 0);
+  page0.set(nvsEntryStateBitmap(slots.length), 32);
+  for (let i = 0; i < slots.length; i++) {
+    page0.set(slots[i], 64 + i * NVS_ENTRY_SIZE);
+  }
+
+  // Full partition: page 0 active + 5 uninitialised pages (all 0xFF).
+  const image = new Uint8Array(NVS_SIZE);
+  image.fill(0xFF);
+  image.set(page0, 0);
+  return image;
+}
+
+function uint8ToBinaryString(bytes) {
+  // esptool-js writeFlash wants the FileReader.readAsBinaryString format
+  // (one char per byte, charCode in 0..255). Avoid String.fromCharCode.apply
+  // on giant arrays — chunk to dodge "Maximum call stack size exceeded".
+  let s = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return s;
 }
 
 let port = null, transport = null, esploader = null;
@@ -206,15 +437,45 @@ btnFlash.addEventListener("click", async () => {
   btnFlash.disabled = true; btnDisconnect.disabled = true;
   setBar(0);
   try {
+    // Resolve optional device-config first so we error out BEFORE wiping
+    // the chip if the user typed something invalid.
+    let cfg = null;
+    try {
+      cfg = validateConfigFields();
+    } catch (e) {
+      log(e.message, "err");
+      btnFlash.disabled = false; btnDisconnect.disabled = false;
+      return;
+    }
+    if (cfg) {
+      log(`Pre-filling NVS: rly_tok (${cfg.token.length} chars), rly_host (${cfg.host})`, "dim");
+      if (cfgRemember.checked) {
+        localStorage.setItem("noisebox_config",
+          JSON.stringify({ token: cfg.token, host: cfg.host }));
+      } else {
+        localStorage.removeItem("noisebox_config");
+      }
+    } else {
+      log("No config supplied — device will prompt on first boot.", "dim");
+    }
+
     log("Fetching latest firmware...", "dim");
     const manifest = await fetchReleaseManifest();
-    log(`Manifest: ${manifest.ref || RELEASES_TAG} (${manifest.build || "unknown build"})`, "dim");
+    log(`Manifest: ${manifest.ref || "latest"} (${manifest.build || "unknown build"})`, "dim");
 
     const fileArray = [];
     for (const f of manifest.files) {
       log(`  ${f.path} → ${f.offset}`, "dim");
       const data = await fetchRelease(f.path);
       fileArray.push({ data, address: parseInt(f.offset, 16) });
+    }
+    if (cfg) {
+      log(`  nvs (pre-filled) → 0x${NVS_OFFSET.toString(16)}`, "dim");
+      const nvsBytes = buildNvsImage(cfg);
+      fileArray.push({
+        data: uint8ToBinaryString(nvsBytes),
+        address: NVS_OFFSET,
+      });
     }
 
     log("Erasing flash...", "dim");
@@ -268,13 +529,26 @@ async function fetchReleaseManifest() {
 async function fetchRelease(path) {
   const r = await fetch(`${FIRMWARE_BASE}${path}`, { cache: "no-cache" });
   if (!r.ok) throw new Error(`${path} fetch HTTP ${r.status}`);
-  // esptool-js wants a binary STRING (one byte per char) — same as
-  // FileReader's readAsBinaryString output.
   const buf = await r.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let s = "";
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-  return s;
+  return uint8ToBinaryString(new Uint8Array(buf));
+}
+
+function validateConfigFields() {
+  const token = cfgToken.value.trim();
+  const host  = cfgHost.value.trim();
+  // Both empty → fall through to on-device setup, no NVS pre-fill.
+  if (!token && !host) return null;
+  // Only one filled → ambiguous, abort.
+  if (!token || !host) {
+    throw new Error("Bot token and relay host must both be filled, or both empty.");
+  }
+  if (!/^[\d]{6,}:[\w\-]{20,}$/.test(token)) {
+    throw new Error("Bot token doesn't look right (expected '123456:abc...').");
+  }
+  if (host.length < 4 || /\s/.test(host)) {
+    throw new Error("Relay host has whitespace or is too short.");
+  }
+  return { token, host };
 }
 </script>
 </body>
