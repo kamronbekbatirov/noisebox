@@ -897,19 +897,27 @@ class Relay:
 
 # ----------------------------------------------------------------- HTTP API --
 
-def make_http_app(relay: Relay, bot_token: str) -> web.Application:
+def make_http_app(relay: Relay, bot_token: str, relay_id: str) -> web.Application:
     """
-    Two auth flavours:
+    Three auth flavours:
 
-      ADMIN  - "/v1/<bot_token>/{health,bind_poll}". Used only at provisioning
-               time (bind_poll) and for monitoring (health). Rate-limited per
-               IP because a successful bind_poll returns a device_token.
+      ADMIN    - "/v1/<bot_token>/{health,_admin/issue_token}". Restricted
+                 to the relay operator. The bot_token is the secret used to
+                 talk to Telegram's Bot API — it MUST stay on the server
+                 and never go into firmware or be shared with users.
 
-      DEVICE - "/v1/<device_token>/{peers,send,poll,info}". The device token
-               is per-Cardputer, issued by the bot when the user runs /pair
-               and claimed by /bind_poll. user_chat_id is derived from the
-               token; any user_chat_id field in the body is IGNORED. A
-               leaked device_token only scopes to its owner's user_chat_id.
+      RELAY-ID - "/v1/<relay_id>/bind_poll". Public-ish identifier of THIS
+                 relay. Cardputers carry it (compiled in or entered on first
+                 boot) so they can claim a 6-digit pair code. Leaking the
+                 relay_id only allows pair-code-guessing attacks (which are
+                 still rate-limited + bound to specific user_chat_ids); it
+                 does NOT compromise the underlying Telegram bot.
+
+      DEVICE   - "/v1/<device_token>/{peers,send,poll,info}". Per-Cardputer
+                 bearer token issued by /bind_poll on a successful pair.
+                 user_chat_id is derived from the token; any body field
+                 is IGNORED. A leaked device_token only scopes to its
+                 owner's user_chat_id.
     """
     routes = web.RouteTableDef()
 
@@ -931,6 +939,11 @@ def make_http_app(relay: Relay, bot_token: str) -> web.Application:
 
     def admin_auth(request: web.Request) -> Optional[web.Response]:
         if not hmac.compare_digest(request.match_info.get("token", ""), bot_token):
+            return web.json_response({"ok": False, "error": "auth"}, status=401)
+        return None
+
+    def relay_id_auth(request: web.Request) -> Optional[web.Response]:
+        if not hmac.compare_digest(request.match_info.get("token", ""), relay_id):
             return web.json_response({"ok": False, "error": "auth"}, status=401)
         return None
 
@@ -980,7 +993,7 @@ def make_http_app(relay: Relay, bot_token: str) -> web.Application:
     @routes.get("/v1/{token}/bind_poll")
     async def bind_poll(request: web.Request):
         if (err := rate_limit(request)) is not None: return err
-        if (err := admin_auth(request)) is not None: return err
+        if (err := relay_id_auth(request)) is not None: return err
         code = request.query.get("code", "")
         if not (code.isdigit() and len(code) == 6):
             return web.json_response({"ok": False, "error": "bad_code"}, status=400)
@@ -1112,6 +1125,15 @@ async def main_async():
     if not token:
         print("BOT_TOKEN env var is required", file=sys.stderr)
         sys.exit(1)
+    relay_id = os.environ.get("RELAY_ID")
+    if not relay_id:
+        # Self-bootstrap: generate a public-ish relay_id and tell the
+        # operator to persist it. We DO NOT auto-write the .env to avoid
+        # silent surprises; just announce so they can copy/paste.
+        relay_id = "nb_" + secrets.token_hex(8)
+        log.warning("RELAY_ID env var was not set — using ephemeral '%s'."
+                    " Set RELAY_ID in .env to keep it stable across restarts.",
+                    relay_id)
     host = os.environ.get("HTTP_HOST", "127.0.0.1")
     port = int(os.environ.get("HTTP_PORT", "8081"))
 
@@ -1119,11 +1141,12 @@ async def main_async():
         relay = Relay(token)
         relay.session = session
 
-        app = make_http_app(relay, token)
+        app = make_http_app(relay, token, relay_id)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, host=host, port=port)
         await site.start()
+        log.info("relay_id=%s", relay_id)
         log.info("http api listening on http://%s:%d/v1/<token>/...", host, port)
 
         try:

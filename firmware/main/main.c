@@ -191,30 +191,28 @@ static int screen_bind(void) {
 static void screen_settings(void);
 static void screen_help(void);
 
-// First-boot config: ask the user for their bot token and relay host,
-// persist both to NVS. Returning means both values are saved AND non-empty.
+// First-boot config: ask the user for the relay's ID + host, persist
+// both to NVS. Returning means both values are saved AND non-empty.
 // Caller is responsible for handing them to tx_init() afterwards.
-static int screen_relay_setup(char *tok, size_t tok_cap,
+static int screen_relay_setup(char *rid, size_t rid_cap,
                               char *host, size_t host_cap) {
     ui_show_message(
         "Relay setup",
         "First boot.\n"
-        "I need your Telegram\n"
-        "bot token + relay host\n"
-        "to talk to the network.",
+        "I need the relay's ID\n"
+        "+ host to reach the\n"
+        "network.",
         "press enter to begin");
 
     while (1) {
-        tok[0] = 0;
-        if (ui_text_input("Bot token", tok, tok_cap,
+        rid[0] = 0;
+        if (ui_text_input("Relay ID", rid, rid_cap,
                           /*masked=*/false,
-                          "from @BotFather; enter=ok") != 0) continue;
-        // Trivial sanity: Telegram tokens look like "123456:abc...". Accept
-        // anything with a colon and length >= 20; user can fix typos later
-        // via Settings -> Re-setup relay.
-        if (!strchr(tok, ':') || strlen(tok) < 20) {
-            ui_show_message("Bot token",
-                            "doesn't look like a\nTelegram bot token.",
+                          "from your relay; enter=ok") != 0) continue;
+        // Trivial sanity: short or whitespacey IDs are typos.
+        if (strlen(rid) < 4 || strchr(rid, ' ')) {
+            ui_show_message("Relay ID",
+                            "looks too short or\nhas whitespace.",
                             "enter to retry");
             continue;
         }
@@ -230,7 +228,7 @@ static int screen_relay_setup(char *tok, size_t tok_cap,
             continue;
         }
 
-        storage_save_relay_token(tok);
+        storage_save_relay_id(rid);
         storage_save_relay_host(host);
         return 0;
     }
@@ -310,10 +308,10 @@ static void screen_settings(void) {
                           "; up  . down  enter=ok  ` =back");
         if (idx < 0 || idx == 4) return;
         if (idx == 0) {
-            // Wipe the saved relay token + host AND the device binding (the
+            // Wipe the saved relay id + host AND the device binding (the
             // device_token was issued by THAT relay, useless on a new one).
             // Wi-Fi is preserved on purpose.
-            storage_save_relay_token("");
+            storage_save_relay_id("");
             storage_save_relay_host("");
             storage_forget_binding();
             ui_show_message("Relay re-setup",
@@ -702,31 +700,29 @@ void app_main(void) {
 
     // Resolve relay configuration. Priority:
     //   1. NVS (set by a previous run of screen_relay_setup), OR
-    //   2. compile-time NOISE_BOT_TOKEN / NOISE_RELAY_HOST defaults from
+    //   2. compile-time NOISE_RELAY_ID / NOISE_RELAY_HOST defaults from
     //      config.h, if those look like real values (not placeholders), OR
     //   3. show the first-boot setup screen.
-    static char s_relay_tok[128];
+    static char s_relay_id[96];
     static char s_relay_host[96];
-    if (storage_load_relay_token(s_relay_tok, sizeof s_relay_tok) != 0
-            || s_relay_tok[0] == 0) {
-        strncpy(s_relay_tok, NOISE_BOT_TOKEN, sizeof s_relay_tok - 1);
+    if (storage_load_relay_id(s_relay_id, sizeof s_relay_id) != 0
+            || s_relay_id[0] == 0) {
+        strncpy(s_relay_id, NOISE_RELAY_ID, sizeof s_relay_id - 1);
     }
     if (storage_load_relay_host(s_relay_host, sizeof s_relay_host) != 0
             || s_relay_host[0] == 0) {
         strncpy(s_relay_host, NOISE_RELAY_HOST, sizeof s_relay_host - 1);
     }
-    bool tok_placeholder  = (s_relay_tok[0] == 0)
-                          || (strstr(s_relay_tok, "XXXX") != NULL)
-                          || (strncmp(s_relay_tok, "0000000000:", 11) == 0);
+    bool id_placeholder   = (s_relay_id[0] == 0)
+                          || (strstr(s_relay_id, "XXXX") != NULL);
     bool host_placeholder = (s_relay_host[0] == 0)
                           || (strstr(s_relay_host, "example.com") != NULL);
-    if (tok_placeholder || host_placeholder) {
-        screen_relay_setup(s_relay_tok, sizeof s_relay_tok,
+    if (id_placeholder || host_placeholder) {
+        screen_relay_setup(s_relay_id, sizeof s_relay_id,
                            s_relay_host, sizeof s_relay_host);
     }
-    ESP_LOGI(TAG, "relay host=%s token_len=%d",
-             s_relay_host, (int)strlen(s_relay_tok));
-    tx_init(s_relay_host, s_relay_tok);
+    ESP_LOGI(TAG, "relay host=%s id=%s", s_relay_host, s_relay_id);
+    tx_init(s_relay_host, s_relay_id);
 
     // Load the per-device bearer token issued by the relay at /pair time.
     // Until this is set, only /bind_poll (authenticated by the shared

@@ -28,13 +28,13 @@ typedef struct {
     char     text[TX_MAX_MSG];
 } tx_msg_t;
 
-// One-time init. `bot_token` is used only for the unauthenticated /bind_poll
-// endpoint at provisioning time. `device_token` is used for everything else
-// after the device has been bound; pass NULL/"" if not yet bound.
-void tx_init(const char *host, const char *bot_token);
+// One-time init. `relay_id` is the public identifier of the relay; only
+// /bind_poll uses it at provisioning time. After /pair, everything else
+// uses the per-device token from `tx_set_device_token`.
+void tx_init(const char *host, const char *relay_id);
 void tx_set_device_token(const char *device_token);
 
-// GET /v1/<bot_token>/bind_poll?code=NNNNNN
+// GET /v1/<relay_id>/bind_poll?code=NNNNNN
 //   0  -> bound: *out_user_chat_id and `out_device_token` (>=80B) populated
 //   1  -> not bound yet
 //  <0  -> expired / claimed / transport error

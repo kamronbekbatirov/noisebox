@@ -114,23 +114,24 @@ should appear as a serial device.</p>
 
 <h2>2. Pre-fill device config (optional)</h2>
 <p class="config-hint">
-  Typing a 46-character bot token on the Cardputer's micro-keyboard is
-  miserable. Fill these here and the flasher will write them straight
-  into the device's NVS — first boot will skip the "Relay setup" screen
-  and jump to the bind code.
+  Typing a relay ID on the Cardputer's micro-keyboard is no fun. Fill
+  these here and the flasher writes them straight into the device's
+  NVS — first boot will skip the "Relay setup" screen and jump to the
+  bind code.
 </p>
 <p class="config-hint">
   <strong>Stays in your browser.</strong> The values are written to your
-  Cardputer over USB and never sent to any server. Leave blank to type
-  them on the device instead.
+  Cardputer over USB and never sent to any server. Both fields are
+  <em>not</em> Telegram secrets — your friend who runs the relay can
+  hand them to you publicly. Leave blank to type them on the device.
 </p>
 <div class="config">
-  <label for="cfgToken">Bot token</label>
-  <input id="cfgToken" type="text" autocomplete="off" spellcheck="false"
-         placeholder="from @BotFather (e.g. 1234567890:ABCxyz...)">
+  <label for="cfgId">Relay ID</label>
+  <input id="cfgId" type="text" autocomplete="off" spellcheck="false"
+         placeholder="from your relay operator (e.g. nb_a1b2c3d4e5f67890)">
   <label for="cfgHost">Relay host</label>
   <input id="cfgHost" type="text" autocomplete="off" spellcheck="false"
-         placeholder="your VPS domain (e.g. relay.example.com)">
+         placeholder="your relay's domain (e.g. relay.example.com)">
   <label class="config-checkbox">
     <input id="cfgRemember" type="checkbox">
     remember these on this browser (localStorage)
@@ -184,14 +185,18 @@ const FIRMWARE_BASE = "../firmware/";
 const $ = id => document.getElementById(id);
 const logEl = $("log"), bar = $("bar");
 const btnConnect = $("btnConnect"), btnFlash = $("btnFlash"), btnDisconnect = $("btnDisconnect");
-const cfgToken = $("cfgToken"), cfgHost = $("cfgHost"), cfgRemember = $("cfgRemember");
+const cfgId = $("cfgId"), cfgHost = $("cfgHost"), cfgRemember = $("cfgRemember");
 
 // Restore from localStorage (opt-in via the checkbox).
+// We honour the legacy `token` field name from earlier versions so users
+// upgrading from the bot_token-in-firmware days don't lose their saved
+// value silently — they'll see it pre-filled and can correct it.
 try {
   const saved = JSON.parse(localStorage.getItem("noisebox_config") || "{}");
-  if (saved.token) cfgToken.value = saved.token;
-  if (saved.host)  cfgHost.value  = saved.host;
-  if (saved.token || saved.host) cfgRemember.checked = true;
+  const savedId = saved.relay_id || saved.token || "";
+  if (savedId)     cfgId.value   = savedId;
+  if (saved.host)  cfgHost.value = saved.host;
+  if (savedId || saved.host) cfgRemember.checked = true;
 } catch {}
 
 if (!("serial" in navigator)) {
@@ -346,11 +351,11 @@ function nvsStringSlots(nsIdx, key, value) {
   return slots;
 }
 
-function buildNvsImage({ token, host }) {
+function buildNvsImage({ relay_id, host }) {
   // Assemble the entry slots that will sit at byte 64 onward of page 0.
   const slots = [
     nvsNamespaceRegistration(NVS_KEY_NAMESPACE, NVS_NS_NOISEBOX),
-    ...nvsStringSlots(NVS_NS_NOISEBOX, "rly_tok",  token),
+    ...nvsStringSlots(NVS_NS_NOISEBOX, "rly_id",   relay_id),
     ...nvsStringSlots(NVS_NS_NOISEBOX, "rly_host", host),
   ];
   const maxSlots = (NVS_PAGE_SIZE - 64) / NVS_ENTRY_SIZE;  // 126
@@ -448,10 +453,10 @@ btnFlash.addEventListener("click", async () => {
       return;
     }
     if (cfg) {
-      log(`Pre-filling NVS: rly_tok (${cfg.token.length} chars), rly_host (${cfg.host})`, "dim");
+      log(`Pre-filling NVS: rly_id (${cfg.relay_id}), rly_host (${cfg.host})`, "dim");
       if (cfgRemember.checked) {
         localStorage.setItem("noisebox_config",
-          JSON.stringify({ token: cfg.token, host: cfg.host }));
+          JSON.stringify({ relay_id: cfg.relay_id, host: cfg.host }));
       } else {
         localStorage.removeItem("noisebox_config");
       }
@@ -534,21 +539,21 @@ async function fetchRelease(path) {
 }
 
 function validateConfigFields() {
-  const token = cfgToken.value.trim();
-  const host  = cfgHost.value.trim();
+  const relay_id = cfgId.value.trim();
+  const host     = cfgHost.value.trim();
   // Both empty → fall through to on-device setup, no NVS pre-fill.
-  if (!token && !host) return null;
+  if (!relay_id && !host) return null;
   // Only one filled → ambiguous, abort.
-  if (!token || !host) {
-    throw new Error("Bot token and relay host must both be filled, or both empty.");
+  if (!relay_id || !host) {
+    throw new Error("Relay ID and relay host must both be filled, or both empty.");
   }
-  if (!/^[\d]{6,}:[\w\-]{20,}$/.test(token)) {
-    throw new Error("Bot token doesn't look right (expected '123456:abc...').");
+  if (relay_id.length < 4 || /\s/.test(relay_id)) {
+    throw new Error("Relay ID looks too short or contains whitespace.");
   }
   if (host.length < 4 || /\s/.test(host)) {
     throw new Error("Relay host has whitespace or is too short.");
   }
-  return { token, host };
+  return { relay_id, host };
 }
 </script>
 </body>

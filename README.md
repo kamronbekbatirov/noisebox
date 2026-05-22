@@ -104,7 +104,7 @@ git clone https://github.com/kamronbekbatirov/noisebox /opt/noisebox
 cd /opt/noisebox/relay
 
 cp .env.example .env
-nano .env       # BOT_TOKEN=... and DOMAIN=relay.yours.example
+nano .env       # BOT_TOKEN, RELAY_ID, DOMAIN
 
 cp Caddyfile.example Caddyfile
 docker compose up -d
@@ -112,6 +112,17 @@ docker compose logs -f relay
 ```
 
 Caddy automatically obtains a Let's Encrypt certificate on first run.
+
+Three values matter in `.env`:
+
+- **`BOT_TOKEN`** — the Telegram bot token from @BotFather. **Stays on
+  this server only.** Don't put it in firmware, don't share with users.
+- **`RELAY_ID`** — public-ish identifier of this relay. Friends who use
+  your relay need this on their Cardputer (alongside `DOMAIN`). It is
+  *not* a Telegram secret — leaking it is roughly equivalent to leaking
+  your domain. Generate with `nb_$(openssl rand -hex 8)`.
+- **`DOMAIN`** — your public hostname; DNS must point at this server.
+
 Smoke-test:
 
 ```bash
@@ -148,9 +159,9 @@ installed.
 ```powershell
 git clone https://github.com/kamronbekbatirov/noisebox C:\noisebox
 cd C:\noisebox\firmware
-# Optional: pre-fill a default bot token / relay host so you don't
-# have to type them on every fresh device. Otherwise leave config.h
-# as-is and enter them on first boot.
+# Optional: pre-fill a default relay ID / host so you don't have to
+# type them on every fresh device. Otherwise leave config.h as-is and
+# enter them on first boot (or via the web flasher's form).
 copy main\config.h.example main\config.h
 
 idf.py set-target esp32s3
@@ -163,8 +174,9 @@ idf.py -p COM3 flash       # adjust COMx
 Plug in, wait for the boot splash → **press enter**. Then:
 
 1. **Wi-Fi** — pick a network, enter password.
-2. **Relay setup** — type your bot token and relay domain. Saved to
-   NVS, won't be asked again.
+2. **Relay setup** — type the relay's ID and domain (your friend who
+   runs the relay gives you both). Saved to NVS, won't be asked again.
+   Can also be pre-filled from the web flasher — no on-device typing.
 3. **Bind to your account** — device shows a 6-digit code. DM your
    bot in Telegram: `/pair NNNNNN`. The bot replies *"Code bound."*
 

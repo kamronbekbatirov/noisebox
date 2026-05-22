@@ -43,7 +43,7 @@ static const char *NS_PEERS   = "peers";
 static const char *K_IDENTITY_PRIV = "id_priv";
 static const char *K_IDENTITY_PUB  = "id_pub";
 static const char *K_DEVICE_TOKEN  = "dev_tok";
-static const char *K_RELAY_TOKEN   = "rly_tok";
+static const char *K_RELAY_ID      = "rly_id";
 static const char *K_RELAY_HOST    = "rly_host";
 
 int storage_load_identity(uint8_t priv[CP_X25519_KEY_LEN],
@@ -106,22 +106,22 @@ int storage_clear_device_token(void) {
 
 // ---- relay configuration (entered on first boot) ------------------------
 
-int storage_load_relay_token(char *out, size_t cap) {
+int storage_load_relay_id(char *out, size_t cap) {
     if (!out || cap < 2) return -1;
     nvs_handle_t h;
     if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) return -1;
     size_t sz = cap;
-    esp_err_t e = nvs_get_str(h, K_RELAY_TOKEN, out, &sz);
+    esp_err_t e = nvs_get_str(h, K_RELAY_ID, out, &sz);
     nvs_close(h);
     if (e != ESP_OK) { out[0] = 0; return -2; }
     return 0;
 }
 
-int storage_save_relay_token(const char *token) {
+int storage_save_relay_id(const char *token) {
     if (!token) return -1;
     nvs_handle_t h;
     if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return -1;
-    esp_err_t e = nvs_set_str(h, K_RELAY_TOKEN, token);
+    esp_err_t e = nvs_set_str(h, K_RELAY_ID, token);
     e |= nvs_commit(h);
     nvs_close(h);
     return e == ESP_OK ? 0 : -2;

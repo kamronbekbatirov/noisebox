@@ -26,10 +26,14 @@ int storage_clear_device_token(void);
 // Relay configuration entered by the user on first boot ("Relay setup"
 // screen). Lets us ship a single signed binary that any user can flash
 // without rebuilding firmware. Both `out` caps should be at least 128.
-int storage_load_relay_token(char *out, size_t cap);
-int storage_save_relay_token(const char *token);
-int storage_load_relay_host (char *out, size_t cap);
-int storage_save_relay_host (const char *host);
+//
+// The relay_id is a NON-secret identifier the relay operator publishes
+// alongside their domain — it gates the public /bind_poll endpoint but
+// is not equivalent to the Telegram bot token (which stays on the VPS).
+int storage_load_relay_id (char *out, size_t cap);
+int storage_save_relay_id (const char *relay_id);
+int storage_load_relay_host(char *out, size_t cap);
+int storage_save_relay_host(const char *host);
 
 // Per-peer ratchet state (survives reboots so we don't lose history nor
 // double-encrypt counters across power-ups).

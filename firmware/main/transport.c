@@ -21,12 +21,12 @@
 static const char *TAG = "tx";
 
 static const char *s_host       = NULL;
-static const char *s_bot_token  = NULL;     // only for /bind_poll
+static const char *s_relay_id   = NULL;     // public relay id; only for /bind_poll
 static char        s_dev_token[96] = {0};   // empty until bound
 
-void tx_init(const char *host, const char *bot_token) {
+void tx_init(const char *host, const char *relay_id) {
     s_host = host;
-    s_bot_token = bot_token;
+    s_relay_id = relay_id;
 }
 
 void tx_set_device_token(const char *token) {
@@ -153,7 +153,7 @@ static int http_call(const char *url, esp_http_client_method_t method,
 }
 
 // build_url uses the per-device bearer token. For the unauthenticated
-// bind path we call build_admin_url which carries the shared bot_token.
+// bind path we call build_relay_url which carries the public relay_id.
 static int build_url(char *out, size_t cap, const char *method,
                      const char *qs) {
     if (qs) {
@@ -163,14 +163,14 @@ static int build_url(char *out, size_t cap, const char *method,
     return snprintf(out, cap, "https://%s/v1/%s/%s",
                     s_host, s_dev_token, method);
 }
-static int build_admin_url(char *out, size_t cap, const char *method,
+static int build_relay_url(char *out, size_t cap, const char *method,
                            const char *qs) {
     if (qs) {
         return snprintf(out, cap, "https://%s/v1/%s/%s?%s",
-                        s_host, s_bot_token, method, qs);
+                        s_host, s_relay_id, method, qs);
     }
     return snprintf(out, cap, "https://%s/v1/%s/%s",
-                    s_host, s_bot_token, method);
+                    s_host, s_relay_id, method);
 }
 
 // ---- API methods ---------------------------------------------------------
@@ -179,7 +179,7 @@ int tx_bind_poll(const char *code, int64_t *out_user_chat_id,
                  char *out_device_token, size_t token_cap) {
     char url[256], qs[64];
     snprintf(qs, sizeof qs, "code=%s", code);
-    build_admin_url(url, sizeof url, "bind_poll", qs);
+    build_relay_url(url, sizeof url, "bind_poll", qs);
     resp_t r = {0};
     int status = http_call(url, HTTP_METHOD_GET, NULL, &r, 5000);
     int rc = -1;

@@ -2,15 +2,15 @@
 // NoiseBox firmware build-time configuration.
 //
 // Copy this file to `config.h` (in .gitignore, never commit) and fill in
-// the placeholders before running `idf.py build`.
+// the placeholders before running `idf.py build`. You can leave the
+// placeholders in and enter both values on the device's first-boot
+// "Relay setup" screen instead.
 
-// The Telegram bot token issued by @BotFather. Same token is configured
-// on the VPS relay's .env (BOT_TOKEN=...). Treat as a SHARED SECRET --
-// anyone who has it can read business-mode-routed traffic for users who
-// connected the bot. On the device this token is used ONLY for the
-// unauthenticated /bind_poll endpoint; everything else uses a per-device
-// bearer token issued by the relay during /pair.
-#define NOISE_BOT_TOKEN   "0000000000:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+// Public-ish identifier of the relay you're using. Matches RELAY_ID in
+// the relay operator's .env. NOT a Telegram secret — your friend who
+// runs the relay can hand this to you alongside their domain without
+// exposing their bot token.
+#define NOISE_RELAY_ID   "nb_XXXXXXXXXXXXXXXX"
 
 // Public hostname of the relay (the same domain Caddy is fronting on 443).
 #define NOISE_RELAY_HOST  "your-domain.example.com"
