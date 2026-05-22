@@ -235,8 +235,15 @@ btnFlash.addEventListener("click", async () => {
       },
     });
     setBar(100);
-    log("Flash complete. Rebooting device...", "ok");
-    await esploader.hardReset();
+    log("Flash complete.", "ok");
+    // esptool-js renamed reset methods between versions. writeFlash
+    // already prints "Leaving..." which triggers the chip's own reset,
+    // so a manual hard-reset here is belt-and-braces. Try both names
+    // and ignore if neither exists — the flash itself is done.
+    try {
+      if (typeof esploader.hardReset === "function") await esploader.hardReset();
+      else if (typeof esploader.hard_reset === "function") await esploader.hard_reset();
+    } catch (e) { /* fine, the device already reset on "Leaving..." */ }
     log("Done. Unplug, then plug back in to start the device.", "ok");
   } catch (e) {
     log(`Flash failed: ${e.message || e}`, "err");

@@ -12,6 +12,11 @@ name: Firmware build
 on:
   push:
     branches: [main]
+    # Skip the build when only docs/firmware/ changed — that path is
+    # rewritten by THIS workflow on tag pushes, so re-triggering the
+    # whole job would just rebuild the same binary and loop.
+    paths-ignore:
+      - 'docs/firmware/**'
     tags: ['v*']
   workflow_dispatch:
 
@@ -84,3 +89,31 @@ jobs:
             dist/partition-table.bin
             dist/manifest.json
           generate_release_notes: true
+
+      - name: Mirror firmware to docs/firmware/ on main (on tag)
+        # GitHub release assets sit on objects.githubusercontent.com
+        # which has no CORS headers — the web flasher on Pages can't
+        # fetch them cross-origin. Mirroring the binaries into
+        # docs/firmware/ on main makes them same-origin to the flasher
+        # and bypasses the CORS issue entirely.
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -e
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main:main
+          git checkout main
+          mkdir -p docs/firmware
+          cp dist/cardputer_messenger.bin   docs/firmware/
+          cp dist/bootloader.bin            docs/firmware/
+          cp dist/partition-table.bin       docs/firmware/
+          cp dist/manifest.json             docs/firmware/
+          if git diff --quiet docs/firmware/; then
+            echo "docs/firmware/ already in sync, nothing to commit"
+          else
+            git add docs/firmware/
+            git commit -m "ci: publish ${GITHUB_REF_NAME} firmware to docs/firmware/"
+            git push origin main
+          fi
