@@ -5,9 +5,9 @@ name: Firmware build
 # GitHub Pages can fetch the latest). On every git tag matching v* we
 # additionally attach the binaries to a GitHub Release.
 #
-# Single binary works for everyone: NOISE_BOT_TOKEN / NOISE_RELAY_HOST
+# Single binary works for everyone: NOISE_RELAY_ID / NOISE_RELAY_HOST
 # stay as placeholders in config.h, so on first boot the firmware shows
-# the "Relay setup" screen and the user types their own values.
+# the "Relay setup" screen (or the web flasher pre-fills NVS).
 
 on:
   push:

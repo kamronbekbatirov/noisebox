@@ -206,7 +206,7 @@ Both users repeat steps 3-5 with their own Cardputers. Then:
    *Identical on both screens* = the relay didn't substitute keys (no
    MITM). Press `y` to confirm. Pressing `n` aborts. **Don't skip this
    step** — it's the only thing standing between you and a compromised
-   bot token or relay operator. See `SECURITY.md`.
+   relay operator. See `SECURITY.md`.
 5. Type and chat. Backtick (`` ` ``) is "back" on most screens.
 
 ## Day-to-day bot commands

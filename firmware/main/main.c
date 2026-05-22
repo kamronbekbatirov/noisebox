@@ -242,7 +242,7 @@ static const tx_peer_t *screen_peer_list(tx_peer_t *peers, int *out_n) {
         ui_spinner_end();
         if (n < 0) {
             // Most common cause: relay returned 401 because device_token
-            // was wiped server-side, or bot token / relay host are wrong.
+            // was wiped server-side, or relay_id / relay_host are wrong.
             // Give the user an escape into Settings instead of looping.
             const char *items[] = {"Retry", "Settings", "Reboot"};
             int idx = ui_menu("Connection failed",
@@ -725,8 +725,8 @@ void app_main(void) {
     tx_init(s_relay_host, s_relay_id);
 
     // Load the per-device bearer token issued by the relay at /pair time.
-    // Until this is set, only /bind_poll (authenticated by the shared
-    // bot_token) is usable.
+    // Until this is set, only /bind_poll (authenticated by the public
+    // relay_id) is usable.
     char dev_tok[96] = {0};
     if (storage_load_device_token(dev_tok, sizeof dev_tok) == 0) {
         tx_set_device_token(dev_tok);

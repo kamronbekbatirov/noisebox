@@ -151,10 +151,10 @@ should appear as a serial device.</p>
 <ol>
   <li>The device boots into a splash screen — press <strong>enter</strong>.</li>
   <li>Pick your Wi-Fi network and enter the password.</li>
-  <li><strong>Relay setup</strong>: type your bot token (from
-    <a href="https://t.me/BotFather">@BotFather</a>) and your relay
-    domain. Both are saved on the device — you won't be asked again.</li>
-  <li>The device shows a 6-digit code. In Telegram DM your bot:
+  <li><strong>Relay setup</strong>: if you didn't fill the form above,
+    type the relay's ID and host on the device. Both are saved in NVS —
+    you won't be asked again.</li>
+  <li>The device shows a 6-digit code. In Telegram DM the bot:
     <code>/pair NNNNNN</code>.</li>
 </ol>
 
@@ -213,7 +213,7 @@ if (!("serial" in navigator)) {
 // the two strings the firmware actually reads on boot:
 //
 //   namespace "noisebox":
-//     rly_tok  = <bot token>
+//     rly_id   = <relay id>
 //     rly_host = <relay host>
 //
 // Doc: https://docs.espressif.com/projects/esp-idf/en/v5.4/api-reference/
@@ -241,7 +241,11 @@ const NVS_NS_MASTER   = 0;
 const NVS_NS_NOISEBOX = 1;
 const NVS_KEY_NAMESPACE = "noisebox";
 
-// --- CRC32 (IEEE 802.3) ---
+// --- CRC32 (NVS flavour: init=0, post-XOR=0xFFFFFFFF) ---
+// This is NOT the standard IEEE-802.3 CRC32 from ZIP/gzip. ESP-IDF's NVS
+// partition uses `zlib.crc32(data, 0xFFFFFFFF)` which (via zlib's
+// pre/post-conditioning) skips the usual init=0xFFFFFFFF and only
+// applies the final XOR. Polynomial 0xEDB88320 (reflected) is the same.
 const CRC32_TABLE = (() => {
   const t = new Uint32Array(256);
   for (let i = 0; i < 256; i++) {
@@ -252,7 +256,7 @@ const CRC32_TABLE = (() => {
   return t;
 })();
 function crc32(bytes) {
-  let c = 0xFFFFFFFF >>> 0;
+  let c = 0;
   for (let i = 0; i < bytes.length; i++) {
     c = (CRC32_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8)) >>> 0;
   }
@@ -314,8 +318,12 @@ function nvsMakeEntry({ nsIdx, type, span, chunkIdx, key, data8 }) {
 }
 
 function nvsNamespaceRegistration(name, idx) {
+  // U8 value: byte 0 = namespace index. The remaining 7 bytes are
+  // unused for U8 entries — ESP-IDF's nvs_partition_gen.py leaves them
+  // as 0xFF padding so we match byte-for-byte.
   const data8 = new Uint8Array(8);
-  data8[0] = idx;  // bytes 1..7 stay 0
+  data8.fill(0xFF);
+  data8[0] = idx;
   return nvsMakeEntry({
     nsIdx: NVS_NS_MASTER, type: NVS_TYPE_U8,
     span: 1, chunkIdx: 0xFF, key: name, data8,
