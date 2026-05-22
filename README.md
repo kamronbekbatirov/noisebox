@@ -11,22 +11,22 @@
 </p>
 
 ```
-┌──────────────┐     base64 ciphertext     ┌──────────────┐
-│  Cardputer   │ ◀──── via Telegram ────▶ │  Cardputer   │
+┌──────────────┐     base64 ciphertext      ┌──────────────┐
+│  Cardputer   │  ◀──── via Telegram ────▶  │  Cardputer   │
 │   (Alice)    │                            │    (Bob)     │
 └──────┬───────┘                            └───────┬──────┘
        │  HTTPS                                     │  HTTPS
        ▼                                            ▼
 ┌──────────────────────────────────────────────────────────┐
 │            NoiseBox relay (your VPS)                     │
-│   aiohttp + Caddy + Let's Encrypt + Docker Compose       │
-│   never sees plaintext, only opaque base64               │
+│  aiohttp + Caddy + Let's Encrypt + Docker Compose        │
+│         never sees plaintext, only opaque base64         │
 └──────────────────────────────────────────────────────────┘
-                            │
-                            ▼  Bot API
-                  ┌──────────────────┐
-                  │   Telegram       │
-                  └──────────────────┘
+                             │
+                             ▼  Bot API
+                   ┌──────────────────┐
+                   │     Telegram     │
+                   └──────────────────┘
 ```
 
 The relay never decrypts anything: only the two Cardputers hold the
