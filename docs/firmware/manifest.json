@@ -1,7 +1,7 @@
 {
   "name": "NoiseBox firmware",
   "chip": "esp32s3",
-  "build": "pending",
+  "build": "8ec5274",
   "ref":   "v0.4",
   "files": [
     { "path": "bootloader.bin",       "offset": "0x0"     },
