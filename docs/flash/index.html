@@ -244,7 +244,9 @@ btnFlash.addEventListener("click", async () => {
       if (typeof esploader.hardReset === "function") await esploader.hardReset();
       else if (typeof esploader.hard_reset === "function") await esploader.hard_reset();
     } catch (e) { /* fine, the device already reset on "Leaving..." */ }
-    log("Done. Unplug, then plug back in to start the device.", "ok");
+    log("Done. The Cardputer rebooted automatically — you should already", "ok");
+    log("see the noisebox splash. If the screen is blank, press the power", "ok");
+    log("button on the side, or unplug USB-C and plug it back in.", "ok");
   } catch (e) {
     log(`Flash failed: ${e.message || e}`, "err");
   } finally {
