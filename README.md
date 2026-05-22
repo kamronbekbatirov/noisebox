@@ -75,6 +75,31 @@ the only place plaintext exists.
 > without a Premium subscription can add Secretary Bots to Chat
 > Automation. Premium is no longer required on either side.
 
+## Try the demo (no server required)
+
+If you just want to see NoiseBox work with a friend, you can borrow my
+hosted relay + bot. Both of you flash your Cardputer with these
+values (the [web flasher](https://kamronbekbatirov.github.io/noisebox/flash/)
+has the fields right at the top of the page):
+
+| Field | Value |
+|---|---|
+| **Bot in Telegram** | [`@noisebox_bot`](https://t.me/noisebox_bot) |
+| **Relay host** | `cardputer.my-bots.uz` |
+| **Relay ID** | `nb_606cf2042f9c1bdd` |
+
+Then follow the **Quick start** below from step 4 onward (skip the
+"Create the bot" and "Deploy the relay" steps — they're already done).
+
+**What I see as the demo relay operator:** Telegram user IDs and
+timestamps of who chats with whom, plus message sizes. I do NOT see
+plaintext — that stays on your Cardputers. I MAY substitute keys
+during your handshake (MITM), so the 5-word SAS comparison over a
+separate channel (phone/voice) is non-optional for the demo.
+
+**For anything sensitive, run your own relay** — `Quick start` →
+section 2 below. It's a one-command Docker deploy.
+
 ## Hardware
 
 - **M5Cardputer-Adv** (ESP32-S3FN8, 8 MB flash, 240×135 LCD, 56-key
@@ -143,9 +168,14 @@ See [`relay/README.md`](relay/README.md) for the bare-VPS path with
 #### Option A — Web Serial flasher (zero install)
 
 1. Plug Cardputer into your laptop with USB-C.
-2. Open <https://kamronbekbatirov.github.io/noisebox/flash> in Chrome
-   or Edge (Safari doesn't support Web Serial).
-3. Click **Connect**, pick the Cardputer's serial port, click **Flash
+2. Open <https://kamronbekbatirov.github.io/noisebox/flash/> in Chrome
+   or Edge (Safari + Firefox don't support Web Serial).
+3. **(Optional but recommended)** Fill in **Relay ID** + **Relay host**
+   in the form — the page writes them straight into the device's NVS,
+   so first boot skips the on-device setup screen and jumps directly
+   to the bind code. (Use the demo values above to try with my relay,
+   or your own from `.env` if you deployed one.)
+4. Click **Connect**, pick the Cardputer's serial port, click **Flash
    latest**.
 
 Done. ESP-IDF not required.
@@ -174,11 +204,11 @@ idf.py -p COM3 flash       # adjust COMx
 Plug in, wait for the boot splash → **press enter**. Then:
 
 1. **Wi-Fi** — pick a network, enter password.
-2. **Relay setup** — type the relay's ID and domain (your friend who
-   runs the relay gives you both). Saved to NVS, won't be asked again.
-   Can also be pre-filled from the web flasher — no on-device typing.
-3. **Bind to your account** — device shows a 6-digit code. DM your
-   bot in Telegram: `/pair NNNNNN`. The bot replies *"Code bound."*
+2. **Relay setup** — type the relay's ID and domain (the relay
+   operator hands you both). Saved to NVS, won't be asked again.
+   **Skipped automatically** if you pre-filled them in the web flasher.
+3. **Bind to your account** — device shows a 6-digit code. DM the bot
+   in Telegram: `/pair NNNNNN`. The bot replies *"Code bound."*
 
 ### 5. Connect the bot to your Telegram account
 
@@ -219,7 +249,8 @@ DM to the bot:
 | `/pair NNNNNN` | Bind a Cardputer's 6-digit code to your account |
 | `/peers` | List current NoiseBox peers |
 | `/unpeer @user` | Remove one peer |
-| `/unbind` | Detach the currently-bound Cardputer |
+| `/devices` | List all Cardputers bound to your account (last-seen time) |
+| `/unbind [N \| all]` | Detach one bound Cardputer (or all of them) |
 | `/status` | Show business-connection status and bound device |
 | `/accept`, `/reject` | Respond to incoming `/pairnoise` requests |
 
@@ -260,14 +291,17 @@ relay/
   bot.py              aiohttp app: Telegram polling + device HTTP API
   Dockerfile          one-command relay image
   docker-compose.yml  relay + caddy + Let's Encrypt
+  Caddyfile.example   TLS termination for the Docker stack
   peer_ghost.py       test client: simulates a second Cardputer
-docs/
-  brand/              SVG logos (paper + ink versions)
-  m5_keyboard_reference/  the upstream M5 keymap we ported from
-web/
-  flash/              esptool-js based web flasher (GitHub Pages)
+docs/                 source for the GitHub Pages site
+  index.html          https://kamronbekbatirov.github.io/noisebox/
+  flash/index.html    web serial flasher (esptool-js + NVS encoder)
+  firmware/           mirrored release binaries served same-origin
+  brand/              ink + paper PNG logos
+  m5_keyboard_reference/  upstream M5 keymap we ported from
 .github/
-  workflows/          CI: builds firmware on every tag, uploads to release
+  workflows/          CI: builds firmware, publishes release, mirrors
+                      binaries to docs/firmware/ on every tag
 ```
 
 ## Threat model (one-paragraph version, full in SECURITY.md)
