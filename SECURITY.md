@@ -72,23 +72,36 @@ match, no MITM. If they don't, abort.
 
 ### Skipping the SAS comparison
 - If the user just smashes `y` without comparing the five words, an
-  active MITM at the relay (or anyone who steals the bot token) can
-  substitute keys in the HELLO exchange and read everything from then
-  on. The five words exist precisely to make this attack visible.
-  Don't skip them.
+  active MITM at the relay (the relay operator, or anyone who got into
+  the VPS) can substitute keys in the HELLO exchange and read
+  everything from then on. The five words exist precisely to make
+  this attack visible. Don't skip them.
 
-### Shared bot token
-- The bot token compiled into the firmware (`NOISE_BOT_TOKEN` in
-  `config.h`) authenticates the unauthenticated `/bind_poll` endpoint
-  on the relay and the bot's calls to Telegram. If you publish a build
-  with your token in `config.h`, anyone with that build can:
-  - Bind new devices to the bot
-  - Brute-force pending 6-digit pair codes (rate-limited to 5 / 10 sec
-    per IP, so brute-forcing 1M codes against a 10-minute TTL is hard
-    but not impossible from a botnet)
-- For a public release, **distribute firmware without the token baked
-  in** and ask users to enter it on first boot, or run a private bot
-  per friend group.
+### A malicious relay operator
+- The relay operator can see Telegram `user_chat_id`s, the
+  who-talks-to-whom contact graph, message timestamps, and ciphertext
+  sizes. They cannot see plaintext.
+- They CAN attempt an active MITM during the handshake. SAS detects
+  this. If the SAS words on the two Cardputers don't match, abort.
+- If you don't trust the relay operator with the metadata, **run your
+  own relay** — it's a one-command Docker deploy (`relay/`).
+
+### Shared `RELAY_ID`
+- Each relay publishes a `RELAY_ID` (e.g. `nb_a1b2c3d4e5f67890`). This
+  is a **non-secret identifier**, intentionally safe to share alongside
+  the relay host: it only gates the `/bind_poll` endpoint, not the
+  Telegram bot API. Leaking it does NOT compromise the underlying
+  Telegram bot.
+- A leaked `RELAY_ID` allows attempting to brute-force pending 6-digit
+  pair codes (the only writable thing on `/bind_poll`). This is
+  rate-limited to 5 req / 10 s per IP. A botnet could conceivably
+  guess specific codes within the 10-minute TTL window, but each
+  successful claim still scopes the resulting device_token to a
+  specific `user_chat_id` (the one that ran `/pair NNNNNN`), so the
+  worst outcome is a single user's pair being hijacked — not the bot.
+- The relay's `BOT_TOKEN` is what authenticates calls to Telegram's
+  Bot API and is therefore the actual secret. It **stays on the VPS
+  only** — not in firmware, not in flasher, not shared with users.
 
 ### Group chats
 - 1:1 only. No groups in this codebase.
@@ -129,5 +142,6 @@ you ask to remain anonymous.
   in `SESSION_PAIRED`; check that this surfaces to the user as a
   warning rather than silently re-keying.
 - `bot.py` `make_http_app` — every device-facing endpoint must call
-  `device_auth(request)`; the only `admin_auth` callers must be
-  `/health`, `/bind_poll`, and the gated `/_admin/issue_token`.
+  `device_auth(request)`; `/health` and `/_admin/issue_token` are the
+  only `admin_auth` callers (bot_token); `/bind_poll` uses
+  `relay_id_auth` (public `RELAY_ID`).

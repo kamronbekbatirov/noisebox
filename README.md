@@ -317,6 +317,32 @@ adversaries (no post-quantum). Flash encryption is supported but
 **off by default** — enabling it requires a one-time eFuse burn. See
 `SECURITY.md`.
 
+## Disclaimer
+
+NoiseBox is a hobby project published as **free software for research,
+education, and chats between friends**. It is provided **as-is, without
+warranty of any kind**, as stated in the AGPL-3.0 licence text below.
+
+- This is not a commercial communications service. There is no company
+  behind it, no SLA, no key escrow, no abuse desk. The maintainer runs
+  one demo relay for convenience; it can go offline at any time and is
+  not suitable for anything important.
+- You are responsible for complying with the laws of your own
+  jurisdiction. Some jurisdictions restrict the use, export, or import
+  of cryptography. Check before you flash, run, or distribute.
+- The maintainer publishes from the United Kingdom under AGPL-3.0,
+  which is a recognised free-software licence consistent with academic
+  publication of cryptographic source code (see Bernstein v. United
+  States and equivalent EU/UK case law).
+- The relay is a "dumb base64 forwarder" — it cannot read plaintext,
+  cannot perform takedown of plaintext content, and was not designed
+  to. If a third party (the relay operator, Telegram, an ISP, a
+  government) compels disclosure, only ciphertext and metadata can be
+  produced.
+- **You are responsible for what you say.** Encrypted transport is not
+  a licence to commit a crime; the same speech is the same speech
+  whether it is base64-wrapped or not.
+
 ## Contributing
 
 Pull requests welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md).

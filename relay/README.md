@@ -11,14 +11,16 @@ full picture and threat model.
 - Polls Telegram for `business_message` updates (so the bot can read &
   send on behalf of a user who connected it via *Telegram for Business
   → Chatbots*).
-- DM commands `/pair NNNNNN`, `/pairnoise`, `/accept`, `/reject`,
-  `/unpair`, `/status` to bind devices, agree on peers, and tear down
-  peering.
+- DM commands: `/pair NNNNNN`, `/peers`, `/unpeer @user`, `/devices`,
+  `/unbind [N|all]`, `/status`, `/accept`, `/reject` (plus `/pairnoise`
+  in a normal chat with a friend).
 - Exposes an HTTP API consumed by the Cardputer firmware:
-  - `/v1/<bot_token>/bind_poll` — claim a 6-digit pair code in exchange
-    for a per-device bearer token (rate-limited 5 req/10 s/IP).
-  - `/v1/<device_token>/peers|send|poll|info` — device-scoped endpoints
-    authenticated by the per-device bearer token issued at bind time.
+  - `/v1/<bot_token>/{health,_admin/issue_token}` — operator-only.
+  - `/v1/<relay_id>/bind_poll` — claim a 6-digit pair code in exchange
+    for a per-device bearer token. Rate-limited 5 req/10 s/IP.
+  - `/v1/<device_token>/{peers,send,poll,info}` — device-scoped
+    endpoints authenticated by the per-device bearer token issued at
+    bind time.
 - Persists state to `state.json` via `flush+fsync+os.replace` so it
   survives restarts and VPS crashes.
 
@@ -32,7 +34,7 @@ git clone https://github.com/kamronbekbatirov/noisebox /opt/noisebox
 cd /opt/noisebox/relay
 
 cp .env.example .env
-nano .env       # BOT_TOKEN=... and DOMAIN=relay.yours.example
+nano .env       # BOT_TOKEN, RELAY_ID, DOMAIN
 
 cp Caddyfile.example Caddyfile
 docker compose up -d
@@ -57,7 +59,7 @@ cd /opt/cardputer-relay && git clone https://github.com/kamronbekbatirov/noisebo
 chown -R cardputer:cardputer /opt/cardputer-relay
 sudo -u cardputer python3 -m venv venv
 sudo -u cardputer ./venv/bin/pip install -r relay/requirements.txt
-cp relay/.env.example .env && nano .env   # paste BOT_TOKEN (DOMAIN unused here)
+cp relay/.env.example .env && nano .env   # set BOT_TOKEN + RELAY_ID (DOMAIN unused here)
 chmod 600 .env && chown cardputer:cardputer .env
 cp relay/cardputer-relay.service /etc/systemd/system/
 systemctl daemon-reload && systemctl enable --now cardputer-relay
@@ -73,8 +75,9 @@ on bare-metal point reverse_proxy at `localhost:8081` instead.
 ```bash
 python3 -m venv venv && . venv/bin/activate
 pip install -r requirements.txt
-export BOT_TOKEN=...               # token from @BotFather
-python -u bot.py                   # listens on 127.0.0.1:8081
+export BOT_TOKEN=...                          # @BotFather token, server-only secret
+export RELAY_ID=nb_$(openssl rand -hex 8)     # public id (firmware/users see this)
+python -u bot.py                              # listens on 127.0.0.1:8081
 ```
 
 For end-to-end testing without a second Cardputer, see

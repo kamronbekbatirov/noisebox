@@ -5,6 +5,16 @@ independent professional review. It exists so that someone reading the
 repo can see what was looked at, what was found, and what was fixed
 before the public 0.1 release.
 
+> **NOTE (v0.4):** the audit below was written against the pre-0.1
+> code, which embedded the Telegram bot token into firmware and used
+> it to gate `/bind_poll`. Since v0.4 the firmware no longer ships
+> with a Telegram secret: each relay publishes a public `RELAY_ID`
+> that gates `/bind_poll` instead, while `BOT_TOKEN` stays on the
+> VPS. See the "v0.4 addendum" at the bottom of this file and
+> `SECURITY.md` for the current threat model. The original audit
+> text is kept verbatim as a historical record of how the project
+> got from RED → YELLOW.
+
 ## Scope
 
 The audit covered:
@@ -214,3 +224,45 @@ understanding that
 For **GREEN**, an independent professional cryptographer should
 review the handshake and ratchet integration, and flash encryption +
 NVS encryption should be enabled by default in shipping builds.
+
+---
+
+## v0.4 addendum — relay_id split
+
+The pre-0.1 audit treated "the bot token is in every firmware build,
+and therefore in every user's hands" as a fundamental constraint of
+the design. Finding #2 mitigated that by issuing per-device bearer
+tokens, but the bot_token still authenticated `/bind_poll` — and
+because the relay used the same value to talk to Telegram's Bot API,
+leaking it to users-of-the-relay leaked the actual Telegram secret
+too.
+
+v0.4 decouples the two concerns:
+
+- **`BOT_TOKEN`** (Telegram secret): stays on the VPS. Never put in
+  firmware, never given to end users. Used only by `bot.py`'s
+  `telegram_loop` and to authenticate `/health` +
+  `/_admin/issue_token` (admin endpoints).
+- **`RELAY_ID`** (public identifier of this relay): a short string
+  the operator publishes alongside the relay's hostname. Firmware /
+  web flasher carry it. Validated against the relay's `RELAY_ID` env
+  var via `hmac.compare_digest`. Gates `/bind_poll` only.
+
+Effect on the threat model:
+
+- An attacker who learns a user's `RELAY_ID` can still attempt 6-digit
+  pair-code brute force against that relay's `/bind_poll`. Rate limit
+  is unchanged (5 req / 10 s per IP); pair codes still expire after
+  10 minutes and bind to a specific `user_chat_id` at issue time.
+  This was the residual risk under the bot_token scheme too.
+- An attacker who learns the `RELAY_ID` can NOT call Telegram's Bot
+  API as the relay — they have no `BOT_TOKEN`.
+- The `peer_ghost.py` test admin endpoint still uses `BOT_TOKEN`; it
+  is therefore impossible to enable accidentally by leaking
+  `RELAY_ID`.
+
+The change is purely additive on the relay (new env var, new auth
+function), backward-compatible for already-issued `device_token`s
+(they continue working unchanged), and breaking only at provisioning
+time — a fresh `/pair NNNNNN` after upgrade requires the device to
+know the new `RELAY_ID`.

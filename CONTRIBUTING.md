@@ -66,7 +66,8 @@ idf.py -p COM3 monitor      # serial log
 cd relay
 python3 -m venv venv && . venv/bin/activate
 pip install -r requirements.txt
-export BOT_TOKEN=...
+export BOT_TOKEN=...                 # from @BotFather, server-side only
+export RELAY_ID=nb_$(openssl rand -hex 8)
 python -u bot.py
 ```
 
