@@ -34,9 +34,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Stub config.h (CI build is generic)
-        # The placeholders here ("0000000000:XXX...", "example.com") are
-        # detected at boot and trigger the Relay setup screen — so the
-        # same binary works for everyone.
+        # The placeholders here ("nb_XXXX...", "example.com") are detected
+        # at boot and trigger the Relay setup screen — so the same binary
+        # works for everyone.
         run: cp firmware/main/config.h.example firmware/main/config.h
 
       - name: Build firmware

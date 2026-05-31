@@ -117,11 +117,11 @@ int storage_load_relay_id(char *out, size_t cap) {
     return 0;
 }
 
-int storage_save_relay_id(const char *token) {
-    if (!token) return -1;
+int storage_save_relay_id(const char *relay_id) {
+    if (!relay_id) return -1;
     nvs_handle_t h;
     if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return -1;
-    esp_err_t e = nvs_set_str(h, K_RELAY_ID, token);
+    esp_err_t e = nvs_set_str(h, K_RELAY_ID, relay_id);
     e |= nvs_commit(h);
     nvs_close(h);
     return e == ESP_OK ? 0 : -2;

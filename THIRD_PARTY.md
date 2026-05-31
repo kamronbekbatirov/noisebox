@@ -15,14 +15,15 @@ attribution required by those licenses.
 - **Upstream:** https://github.com/m5stack/M5GFX
 - **Copyright:** © M5Stack Technology Co., Ltd.
 
-### M5Cardputer-UserDemo keymap
+### M5Cardputer-UserDemo keyboard driver
 
 - **What:** the layout of the 56-key TCA8418 matrix, the modifier
   detection logic, and the Fn-layer table in `firmware/main/keyboard.c`
-  are a C port of the matching `keyboard.cpp` / `keymap.h` from the
-  M5Cardputer-UserDemo project's `CardputerADV` branch. The original
-  files are preserved verbatim under `docs/m5_keyboard_reference/`
-  for reference and to satisfy the MIT preserve-notice requirement.
+  are a C port of `keyboard.cpp` from the M5Cardputer-UserDemo
+  project's `CardputerADV` branch. The two original C++ files are
+  preserved verbatim under `docs/m5_keyboard_reference/` (with their
+  MIT SPDX headers intact) so the preserve-notice clause is satisfied
+  even if someone redistributes the repo without the link below.
 - **License:** MIT
 - **Upstream:** https://github.com/m5stack/M5Cardputer-UserDemo
   (branch `CardputerADV`, path `main/hal/keyboard/`)

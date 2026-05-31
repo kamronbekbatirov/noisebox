@@ -21,30 +21,40 @@ User flow:
      Bot then stores them as mutual peers. Cardputers fetch the peer list
      and run their X25519 handshake + SAS confirmation over /send + /poll.
 
-HTTP API (all under /v1/<bot_token>/):
+HTTP API (three auth tiers — see make_http_app docstring):
+
+  /v1/<bot_token>/...   (operator-only, uses BOT_TOKEN env)
     GET  /health
         -> {"ok": true, "ts": ...}
+    POST /_admin/issue_token  (gated by NOISE_TEST_ADMIN=1, peer_ghost only)
+        body: {"user_chat_id": <int>}
+        -> {"ok": true, "device_token": ..., "user_chat_id": ...}
 
-    GET  /peers?user_chat_id=<int>
-        -> {"ok": true, "peers": [{"user_id":..., "first_name":..., ...}, ...]}
-
-    POST /send
-        body: {"user_chat_id": <int>, "peer_user_id": <int>, "text": <str>}
-        -> {"ok": true, "delivered_to_inbox": <int>}
-        Sends `text` from user_chat_id's business connection to peer_user_id.
-        Mirrors a copy into peer's inbox immediately (Telegram does NOT echo
-        business-initiated sends back to the bot).
-
-    GET  /poll?user_chat_id=<int>&after=<int>&timeout=<sec 0..50>
-        -> {"ok": true, "messages": [{"id":N,"from":<int>,"text":...,"ts":...}], "head_id": ...}
-
-    GET  /info?user_chat_id=<int>
-        -> diagnostic dump.
-
+  /v1/<relay_id>/...    (public, uses RELAY_ID env)
     GET  /bind_poll?code=<6 digits>
-        -> {"ok": true, "bound": true, "user_chat_id": <int>}     - success
+        -> {"ok": true, "bound": true,  "user_chat_id": <int>,
+                                          "device_token": <str>}  - success
         -> {"ok": true, "bound": false}                            - still pending
         -> {"ok": false, "error": "expired"}                       - too late
+        Rate-limited 5 req / 10 s per IP.
+
+  /v1/<device_token>/...   (per-Cardputer, issued by /bind_poll)
+    GET  /peers
+        -> {"ok": true, "peers": [{"user_id":..., "first_name":..., ...}]}
+    POST /send
+        body: {"peer_user_id": <int>, "text": <str>}
+        -> {"ok": true, "delivered_to_inbox": <int>}
+        Sends `text` from the device-owner's business connection to
+        peer_user_id. Mirrors a copy into peer's inbox immediately
+        (Telegram does NOT echo business-initiated sends back to the bot).
+    GET  /poll?after=<int>&timeout=<sec 0..50>
+        -> {"ok": true, "messages": [{"id":N,"from":<int>,"text":...,"ts":...}],
+                          "head_id": ...}
+    GET  /info
+        -> diagnostic dump for the device's owner.
+
+In all device-token paths, the owning user_chat_id is derived from the
+token server-side; any user_chat_id in the body is ignored.
 
 State persisted to STATE_FILE (JSON). Survives systemd restarts.
 Inboxes are intentionally ephemeral - long-poll clients catch up by
@@ -112,6 +122,9 @@ class Relay:
     def __init__(self, token: str):
         self.token = token
         self.session: Optional[aiohttp.ClientSession] = None
+        # Filled in at startup by `getMe`; used in DM welcome text so the
+        # links show the user's actual bot, not a hard-coded @noisebox_bot.
+        self.bot_username: str = "noisebox_bot"
 
         # Telegram-side state
         self.user_to_conn: Dict[int, str] = {}
@@ -303,6 +316,7 @@ class Relay:
     # --- DM commands ---
 
     async def cmd_start(self, chat_id: int):
+        u = self.bot_username
         await self.tg_send(chat_id, (
             "Hi! NoiseBox - end-to-end encrypted text between two Cardputers,\n"
             "carried by Telegram. The bot only sees base64 garbage; only the\n"
@@ -310,11 +324,11 @@ class Relay:
             "STEP 1.  Connect me to your Telegram account (one-time).\n\n"
             "   iOS:\n"
             "     Settings -> My Profile -> Edit (top-right) ->\n"
-            "     Chat automation -> add @noisebox_bot ->\n"
+            f"     Chat automation -> add @{u} ->\n"
             "     enable 'Reply to messages' and 'Access messages'\n\n"
             "   Android:\n"
             "     Settings -> My Account -> Telegram for Business ->\n"
-            "     Chatbots -> add @noisebox_bot ->\n"
+            f"     Chatbots -> add @{u} ->\n"
             "     enable 'Reply to messages' and 'Access messages'\n\n"
             "STEP 2.  Bind your Cardputer to you (one-time per device).\n"
             "     Power on the device; it shows a 6-digit code.\n"
@@ -329,7 +343,8 @@ class Relay:
             "   your /pair binding and peers are kept.\n"
             " - To swap Cardputers: on the new device, go Settings ->\n"
             "   'Unbind device', power-cycle, then /pair the new code.\n\n"
-            "Commands: /peers, /unpeer @user, /unbind, /status."
+            "Commands: /peers, /unpeer @user, /devices, "
+            "/unbind [N|all], /status."
         ))
 
     async def cmd_pair(self, chat_id: int, arg: str):
@@ -1140,6 +1155,19 @@ async def main_async():
     async with aiohttp.ClientSession() as session:
         relay = Relay(token)
         relay.session = session
+
+        # Pull the bot's actual @username so cmd_start renders correct
+        # Telegram links instead of a hard-coded @noisebox_bot. Best-effort:
+        # if getMe fails we keep the default and log a warning.
+        try:
+            me = await relay.call("getMe")
+            if me.get("ok"):
+                uname = me.get("result", {}).get("username")
+                if uname:
+                    relay.bot_username = uname
+                    log.info("bot username: @%s", uname)
+        except Exception as e:
+            log.warning("getMe failed: %s — using default bot_username", e)
 
         app = make_http_app(relay, token, relay_id)
         runner = web.AppRunner(app)

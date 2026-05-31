@@ -1,7 +1,7 @@
 # NoiseBox relay — one-command deploy.
 #
 # Usage:
-#   1. Copy .env.example to .env, fill in BOT_TOKEN and DOMAIN.
+#   1. Copy .env.example to .env, fill in BOT_TOKEN, RELAY_ID, DOMAIN.
 #   2. Point an A record for $DOMAIN at this server's public IP.
 #   3. docker compose up -d
 #
